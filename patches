@@ -173,7 +173,7 @@ build_patch_by_patch() {
 	touch .first_in_series
 
 	git rebase --exec \
-		'git show | grep -q "not-for-review" || PATCHES_CONFIG="../tcpdevmem-dev/test.config" ~/bin/build_patch_with_checks.sh' \
+		'git show | grep -q "not-for-review" || PATCHES_CONFIG="../tcpdevmem-dev/test.config" ~/patches/build_patch_with_checks.sh' \
 		$parent
 
 	echo "Test build patches succeeded"

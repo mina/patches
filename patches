@@ -76,12 +76,12 @@ function create() {
 	fi
 
 	local to=$(git diff "$RANGE" | ./scripts/get_maintainer.pl \
-		--nogit-fallback --norolestats -nom -nor --nomoderated \
+		--git-min-percent 25 --norolestats -nom -nor --nomoderated \
 		--nomultiline)
 	local cc=$(git diff "$RANGE" | ./scripts/get_maintainer.pl \
-		--nogit-fallback --norolestats -nol --nomoderated --nomultiline)
+		--git-min-percent 25 --norolestats -nol --nomoderated \
+		--nomultiline)
 
-	# TODO, this assumes net-next
 	local files=$(git format-patch \
 		-o $head \
 		"$RANGE" \

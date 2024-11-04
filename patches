@@ -44,10 +44,10 @@ set -euo pipefail
 set -x
 
 TEST="${TEST:-0}"
-TREE="${TREE:-"net-next"}"
 
 head=$(git rev-parse --abbrev-ref --symbolic-full-name HEAD)
 parent=$(git rev-parse --abbrev-ref --symbolic-full-name @{u})
+tree="${parent:0:-5}"
 RANGE="${RANGE:-"$parent..HEAD"}"
 git_send_to="netdev@vger.kernel.org"
 
@@ -88,7 +88,7 @@ function create() {
 		$cover_letter \
 		--to="$to" \
 		--cc="$cc" \
-		--subject-prefix="PATCH $TREE" \
+		--subject-prefix="PATCH $tree" \
 		"$@")
 
 	# Delete change-id
@@ -203,14 +203,18 @@ build_configs() {
 	echo $rc
 }
 
-presubmit() {
-	git fetch $TREE
+presubmit_no_builds() {
+	git fetch $tree
 
 	git rebase
 
 	checkpatch
 
 	check_ynl
+}
+
+presubmit() {
+	presubmit_no_builds
 
 	local rc=$(build_configs)
 	if [[ $rc != 0 ]]; then
@@ -254,6 +258,8 @@ elif [ "$command" == "build_allmodconfig_patch_by_patch" ]; then
 	build_allmodconfig_patch_by_patch $@
 elif [ "$command" == "presubmit" ]; then
 	presubmit $@
+elif [ "$command" == "presubmit_no_builds" ]; then
+	presubmit_no_builds $@
 elif [ "$command" == "clang_format" ]; then
 	clang_format $@
 elif [ "$command" == "build_configs" ]; then

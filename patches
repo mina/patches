@@ -44,6 +44,7 @@ set -euo pipefail
 set -x
 
 TEST="${TEST:-0}"
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 head=$(git rev-parse --abbrev-ref --symbolic-full-name HEAD)
 parent=$(git rev-parse --abbrev-ref --symbolic-full-name @{u})
@@ -187,8 +188,8 @@ build_configs() {
 
 	make mrproper
 
-	for config in $(ls ../$head/*.config); do
-		KCONFIG_ALLCONFIG="$config" make allnoconfig -s O=$dir
+	for config in $(ls "$SCRIPT_DIR/configs"); do
+		KCONFIG_ALLCONFIG="$SCRIPT_DIR/configs/$config" make allnoconfig -s O=$dir
 		make -j`nproc` -s O=$dir || rc=$?
 	done
 

@@ -44,6 +44,7 @@ set -euo pipefail
 set -x
 
 TEST="${TEST:-0}"
+RFC="${RFC:-0}"
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 head=$(git rev-parse --abbrev-ref --symbolic-full-name HEAD)
@@ -83,13 +84,19 @@ function create() {
 		--git-min-percent 25 --norolestats -nol --nomoderated \
 		--nomultiline)
 
+	if [[ $RFC == 0 ]]; then
+		PREFIX="PATCH $tree"
+	else
+		PREFIX="PATCH RFC $tree"
+	fi
+
 	local files=$(git format-patch \
 		-o $head \
 		"$RANGE" \
 		$cover_letter \
 		--to="$to" \
 		--cc="$cc" \
-		--subject-prefix="PATCH $tree" \
+		--subject-prefix="$PREFIX" \
 		"$@")
 
 	# Delete change-id

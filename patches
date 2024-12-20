@@ -78,11 +78,11 @@ function create() {
 	fi
 
 	local to=$(git diff "$RANGE" | ./scripts/get_maintainer.pl \
-		--git-min-percent 25 --norolestats -nom -nor --nomoderated \
+		--no-git-fallback --norolestats -nom -nor --nomoderated \
 		--nomultiline)
+
 	local cc=$(git diff "$RANGE" | ./scripts/get_maintainer.pl \
-		--git-min-percent 25 --norolestats -nol --nomoderated \
-		--nomultiline)
+		--no-git-fallback --norolestats -nol --nomoderated --nomultiline)
 
 	if [[ $RFC == 0 ]]; then
 		PREFIX="PATCH $tree"

@@ -167,8 +167,6 @@ build_allmodconfig_patch_by_patch() {
 		$parent
 
 	echo "Test build patches succeeded"
-
-	git tag "$head-$FUNCNAME-$(date +%F-%s)"
 }
 
 build_patch_by_patch() {
@@ -181,7 +179,6 @@ build_patch_by_patch() {
 		$parent
 
 	echo "Test build patches succeeded"
-	git tag "$head-$FUNCNAME-$(date +%F-%s)"
 }
 
 clang_format() {
@@ -203,7 +200,6 @@ build_configs() {
 	make allnoconfig -s O=$dir
 	make -j`nproc` -s O=$dir || rc=$?
 
-	git tag "$head-$FUNCNAME-$(date +%F-%s)"
 	echo $rc
 }
 
@@ -228,6 +224,8 @@ presubmit() {
 	build_patch_by_patch
 
 	build_allmodconfig_patch_by_patch
+
+	git tag "$head-$FUNCNAME-$(date +%F-%s)"
 }
 
 send_no_confirm() {

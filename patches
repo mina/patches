@@ -119,7 +119,7 @@ send() {
 
 	yes | git send-email $files --to="$git_send_to" --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN || true
 
-	git tag "$head-$FUNCNAME-$(date +%F-%s)"
+	git tag "$(date +%F-%s)-$head-$FUNCNAME"
 }
 
 checkpatch() {
@@ -225,7 +225,7 @@ presubmit() {
 
 	build_allmodconfig_patch_by_patch
 
-	git tag "$head-$FUNCNAME-$(date +%F-%s)"
+	git tag "$(date +%F-%s)-$head-$FUNCNAME"
 }
 
 send_no_confirm() {

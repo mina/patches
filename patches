@@ -91,6 +91,7 @@ function create() {
 	fi
 
 	local files=$(git format-patch \
+		--base \
 		-o $head \
 		"$RANGE" \
 		$cover_letter \

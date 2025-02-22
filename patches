@@ -6,7 +6,7 @@
 # git a .
 # git cm -m "my patch"
 #
-# # Creates patches under my-branch/
+# # Creates patches under patches.my-branch/
 # patches create -v 1
 #
 # # clang-format each patch in a git rebase --exec
@@ -29,14 +29,17 @@
 # # Build all configs in `ls ../<branch name>/*.config`
 # patches build_configs
 #
-# # Run all the checks, and send the patches upstream
+# # Run all non build presubmits (faster)
+# patches presubmit_no_builds
+#
+# # Run all the checks
 # patches presubmit
 #
 # # Send the patches
 # patches send -v 1
 #
 # # Also available is send_no_confirm, which presubmits then sends with no
-# prompt
+# # prompt
 # patches send_no_confirm -v 1
 
 set -euo pipefail

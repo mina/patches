@@ -44,7 +44,7 @@
 
 set -euo pipefail
 # Turn on for debugging
-set -x
+set -ex
 
 TEST="${TEST:-0}"
 RFC="${RFC:-0}"

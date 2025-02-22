@@ -94,7 +94,7 @@ function create() {
 	fi
 
 	local files=$(git format-patch \
-		--base \
+		--base $parent \
 		-o "patches.$head" \
 		"$RANGE" \
 		$cover_letter \

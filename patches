@@ -59,7 +59,7 @@ git_send_to="netdev@vger.kernel.org"
 echoerr() { cat <<< "$@" 1>&2; }
 
 function create() {
-	rm -rf $head/*.patch
+	rm -rf "patches.$head"/*.patch
 
 	local cover_letter=""
 	set +e
@@ -95,7 +95,7 @@ function create() {
 
 	local files=$(git format-patch \
 		--base \
-		-o $head \
+		-o "patches.$head" \
 		"$RANGE" \
 		$cover_letter \
 		--to="$to" \

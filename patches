@@ -16,7 +16,7 @@
 # patches checkpatch
 #
 # # Runs patch-by-patch W=1 C=1 in a git rebase --exec
-# patches build_patch_by_patch
+# patches build_each_patch
 #	# if you run into errors
 #	vim ...				# fix the errors
 #	git cm --amend			# commit the fixes
@@ -24,7 +24,7 @@
 #	git rebase --continue		# Carry on with the patch-by-patch build
 #
 # # Build patch-by-patch allmodconfig in a git rebase --exec
-# patches build_allmodconfig_patch_by_patch
+# patches build_allmodconfig_each_patch
 #
 # # Build all configs in `ls ../<branch name>/*.config`
 # patches build_configs
@@ -163,31 +163,39 @@ checkpatch() {
 	echo done kernel-doc
 }
 
-build_allmodconfig_patch_by_patch() {
-	local dir=build_allmodconfig/
-	make allmodconfig O=$dir
+# Runs a command on each patch
+cmd_each_patch() {
+	local cmd="$1"
+
+	echo
+	echo "rebasing exec $cmd"
 	git rebase --exec \
-		"git show | grep -q \"not-for-review\" || make -s -j`nproc` O=$dir" \
+		"git show | grep -q \"not-for-review\" || $cmd" \
 		$parent
+}
+
+
+build_allmodconfig_each_patch() {
+	local dir=build_allmodconfig/
+
+	make allmodconfig O=$dir
+	cmd_each_patch " make -s -j`nproc` O=$dir"
 
 	echo "Test build patches succeeded"
 }
 
-build_patch_by_patch() {
+build_each_patch() {
 	make mrproper
 
 	touch .first_in_series
 
-	git rebase --exec \
-		"git show | grep -q "not-for-review" || PATCHES_CONFIG=\"$SCRIPT_DIR/configs/test.config\" ~/patches/build_patch_with_checks.sh" \
-		$parent
+	cmd_each_patch "PATCHES_CONFIG=\"$SCRIPT_DIR/configs/test.config\" ~/patches/build_patch_with_checks.sh"
 
 	echo "Test build patches succeeded"
 }
 
 clang_format() {
-	git rebase --exec \
-		'git show | grep -q "not-for-review" || git diff -U0 --no-color HEAD~ | /usr/lib/clang-format/clang-format-diff.py -i -p1' $parent
+	cmd_each_patch "git diff -U0 --no-color HEAD~ | /usr/lib/clang-format/clang-format-diff.py -i -p1"
 }
 
 build_configs() {
@@ -207,10 +215,16 @@ build_configs() {
 	echo $rc
 }
 
+deprecated_api() {
+	cmd_each_patch "~/nipa/tests/patch/deprecated_api/deprecated_api.sh"
+}
+
 presubmit_no_builds() {
 	git fetch $tree
 
 	git rebase
+
+	deprecated_api
 
 	checkpatch
 
@@ -225,9 +239,9 @@ presubmit() {
 		exit $rc
 	fi
 
-	build_patch_by_patch
+	build_each_patch
 
-	build_allmodconfig_patch_by_patch
+	build_allmodconfig_each_patch
 
 	git tag "$(date +%F-%s)-$head-$FUNCNAME"
 }
@@ -258,10 +272,10 @@ elif [ "$command" == "send_no_confirm" ]; then
 	send_no_confirm $@
 elif [ "$command" == "checkpatch" ]; then
 	checkpatch $@
-elif [ "$command" == "build_patch_by_patch" ]; then
-	build_patch_by_patch $@
-elif [ "$command" == "build_allmodconfig_patch_by_patch" ]; then
-	build_allmodconfig_patch_by_patch $@
+elif [ "$command" == "build_each_patch" ]; then
+	build_each_patch $@
+elif [ "$command" == "build_allmodconfig_each_patch" ]; then
+	build_allmodconfig_each_patch $@
 elif [ "$command" == "presubmit" ]; then
 	presubmit $@
 elif [ "$command" == "presubmit_no_builds" ]; then

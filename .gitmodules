@@ -1,0 +1,3 @@
+[submodule "nipa"]
+	path = nipa
+	url = https://github.com/linux-netdev/nipa

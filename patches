@@ -35,6 +35,9 @@
 # # Run all the checks
 # patches presubmit
 #
+# # Run a set of nipa tests
+# patches patches nipa_single_test patch/deprecated_api,patch/verify_signedoff
+#
 # # Send the patches
 # patches send -v 1
 #
@@ -261,6 +264,41 @@ check_ynl() {
 	fi
 }
 
+nipa_single_test() {
+	single_test="$1"
+
+	create
+
+	cat > nipa.config <<EOF
+		[log]
+		type = stdout
+		path = none
+		file = none
+
+		[results]
+		dir = ./patches.nipa/results
+
+		[dirs]
+		tests = $SCRIPT_DIR/nipa/tests
+
+		[tests]
+		include = $single_test
+EOF
+
+	rm -rf ./patches.nipa/
+	mkdir -p ./patches.nipa/
+
+	git branch -D nipa-scratch || true
+	git checkout -b nipa-scratch
+
+	$SCRIPT_DIR/nipa/ingest_mdir.py \
+	  --mdir $(pwd)/patches.$head \
+	  --tree $(pwd) --tree-name $tree --tree-branch $tree/main
+	echo $?
+
+	git checkout $head
+}
+
 command="$1"
 shift
 
@@ -287,4 +325,6 @@ elif [ "$command" == "build_configs" ]; then
 	exit $rc
 elif [ "$command" == "check_ynl" ]; then
 	check_ynl $@
+elif [ "$command" == "nipa_single_test" ]; then
+	nipa_single_test $@
 fi

@@ -88,7 +88,7 @@ function create() {
 		--nomultiline)
 
 	local cc=$(git diff "$RANGE" | ./scripts/get_maintainer.pl \
-		--no-git-fallback --norolestats -nol --nomoderated --nomultiline)
+		--git-min-percent 25 --norolestats -nol --nomoderated --nomultiline)
 
 	if [[ $RFC == 0 ]]; then
 		PREFIX="PATCH $tree"

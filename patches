@@ -27,7 +27,7 @@
 # # Run all the presubmits and send the patches without confirming:
 # patches send_no_confirm -v 1
 
-set -ex
+set -e
 
 TEST="${TEST:-0}"
 RFC="${RFC:-0}"

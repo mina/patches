@@ -153,7 +153,7 @@ presubmit_quick() {
 
 	git rebase
 
-	nipa_test patch/series_format,patch/tree_selection,patch/ynl,patch/fixes_present,patch/header_inline,patch/cc_maintainers,patch/verify_signedoff,patch/shellcheck,patch/deprecated_api,patch/pylint,patch/yamllint,patch/check_selftest,patch/verify_fixes,patch/checkpatch,patch/kdoc,patch/source_inline
+	nipa_test series/series_format,patch/tree_selection,series/ynl,series/fixes_present,patch/header_inline,patch/cc_maintainers,patch/verify_signedoff,patch/shellcheck,patch/deprecated_api,patch/pylint,patch/yamllint,patch/check_selftest,patch/verify_fixes,patch/checkpatch,patch/kdoc,patch/source_inline
 }
 
 presubmit() {

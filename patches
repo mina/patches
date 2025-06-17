@@ -208,7 +208,6 @@ EOF
 	"$SCRIPT_DIR"/nipa/ingest_mdir.py \
 	  --mdir "$(pwd)"/patches."$head" \
 	  --tree "$(pwd)" --tree-name "$tree" --tree-branch "$tree"/main
-	echo $?
 
 	git checkout "$head" -q
 

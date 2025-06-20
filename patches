@@ -36,14 +36,13 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 head=$(git rev-parse --abbrev-ref --symbolic-full-name HEAD)
 parent=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}")
 tree="${parent:0:-5}"
-git_send_to="netdev@vger.kernel.org"
 
 echoerr() { cat <<< "$@" 1>&2; }
 
 function create() {
 	rm -rf "patches.$head"/*.patch
 
-	local cover_letter=""
+	local cover_letter=
 	local to=""
 	local cc=""
 	local files=""
@@ -57,11 +56,6 @@ function create() {
 
 	range="$parent..$commit"
 
-	set +e
-	git config branch."$head".description > .description.txt && \
-		cover_letter="1"
-	set -e
-
 	count=$(($(git rev-list --count "$range")))
 
 	if [[ "$count" -lt 1 ]]; then
@@ -69,10 +63,11 @@ function create() {
 		exit 1
 	fi
 
-	if [[ "$count" -lt 1 ]] && [[ -n "$cover_letter" ]]; then
-		cover_letter="--cover-letter --cover-from-description=auto --description-file=.description.txt"
-	else
-		cover_letter=""
+	if git config branch."$head".description > .description.txt &&
+	   [[ $count -gt 1 ]]; then
+		cover_letter="--cover-letter \
+			--cover-from-description=auto \
+			--description-file=.description.txt"
 	fi
 
 	to=$(git diff "$range" | ./scripts/get_maintainer.pl \
@@ -118,7 +113,7 @@ send() {
 		DRY_RUN="--dry-run"
 	fi
 
-	yes | git send-email $files --to="$git_send_to" --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN || true
+	yes | git send-email $files --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }

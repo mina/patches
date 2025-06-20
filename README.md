@@ -1,43 +1,41 @@
 # patches
-My setup to automate sending netdev patches
+Tool to automate netdev development.
 
-Workflow:
+## Installation
 
 ```
+git clone --recurse-submodules https://github.com/mina/patches.git
+# add patches to your $PATH
+```
+
+# Workflow:
+
+```
+# Do development
 git co -b my-branch --track net-next/main
 vim ...
 git a .
 git cm -m "my patch"
 
-# Creates patches under my-branch/
-patches create -v 1
-
-# clang-format each patch in a git rebase --exec
+# clang-format the patches
 patches clang_format
 
-# Runs checkpatch
-patches checkpatch
+# Creates patches under patches.my-branch/
+patches create -v 1
 
-# Runs patch-by-patch W=1 C=1 in a git rebase --exec
-patches build_patch_by_patch
-    # if you run into errors
-    vim ...				        # fix the errors
-    git cm --amend			    # commit the fixes
-    build_patch_with_checks.sh	# check if the errors still happen
-    git rebase --continue		# carry on with the patch-by-patch build
+# Run all non-build presubmits (faster)
+patches presubmit_quick
 
-# Build patch-by-patch allmodconfig in a git rebase --exec
-patches build_allmodconfig_patch_by_patch
-
-# Build all configs in `ls ../<branch name>/*.config`
-patches build_configs
-
-# Run all presubmit tests.
+# Run all the checks including builds (slow)
 patches presubmit
 
-# Send the patches
+# Run an explicit set of nipa tests:
+patches patches nipa_test patch/deprecated_api,patch/verify_signedoff
+
+# Send the patches to your target tree based on the upstream branch,
+# net-next in this case
 patches send -v 1
 
-# Also available is send_no_confirm, which presubmits then sends with no prompt
+# Run all the presubmits and send the patches without confirming
 patches send_no_confirm -v 1
 ```

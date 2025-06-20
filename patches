@@ -6,11 +6,11 @@
 # git a .
 # git cm -m "my patch"
 #
-# # Creates patches under patches.my-branch/ to review what they look like:
-# patches create -v 1
-#
 # # clang-format each patch in a git rebase --exec:
 # patches clang_format
+#
+# # Creates patches under patches.my-branch/ to review what they look like:
+# patches create -v 1
 #
 # # Run all non-build presubmits (faster):
 # patches presubmit_quick

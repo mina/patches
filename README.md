@@ -8,7 +8,7 @@ git clone --recurse-submodules https://github.com/mina/patches.git
 # add patches to your $PATH
 ```
 
-# Workflow:
+## Workflow:
 
 ```
 # Do development
@@ -26,7 +26,7 @@ patches create -v 1
 # Run all non-build presubmits (faster)
 patches presubmit_quick
 
-# Run all the checks including builds (slow)
+# Run all the checks including builds (slower)
 patches presubmit
 
 # Run an explicit set of nipa tests:

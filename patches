@@ -35,7 +35,12 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 head=$(git rev-parse --abbrev-ref --symbolic-full-name HEAD)
 parent=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}")
-tree="${parent:0:-5}"
+tree="${parent%/*}"
+
+if [[ "$tree" != "net" && "$tree" != "net-next" ]]; then
+	echo patches only supports net and net-next trees at the moment, detected invalid tree called: $tree
+	exit 1
+fi
 
 echoerr() { cat <<< "$@" 1>&2; }
 
@@ -43,10 +48,10 @@ function create() {
 	rm -rf "patches.$head"/*.patch
 
 	local cover_letter=
-	local to=""
-	local cc=""
 	local files=""
 	local range=""
+	local to=""
+	local cc=""
 
 	for commit in $(git rev-list "$head" --max-count=50); do
 		if ! git show "$commit" --oneline | grep -q "not-for-review"; then
@@ -139,6 +144,10 @@ build_each_patch() {
 	echo "Test build patches succeeded"
 }
 
+clang_format() {
+	cmd_each_patch "git diff -U0 --no-color HEAD~ | /usr/lib/clang-format/clang-format-diff.py -i -p1"
+}
+
 check_behind() {
 	git fetch "$tree"
 
@@ -147,10 +156,6 @@ check_behind() {
 		echo your branch is behind its upstream. you gotta rebase.
 		exit 1
 	fi
-}
-
-clang_format() {
-	cmd_each_patch "git diff -U0 --no-color HEAD~ | /usr/lib/clang-format/clang-format-diff.py -i -p1"
 }
 
 presubmit_quick() {

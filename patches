@@ -210,7 +210,9 @@ EOF
 
 	for retcode in $(find patches.nipa -iname retcode); do
 		ret="$(cat "$retcode")"
-		if [[ $ret != "0" ]]; then
+		if [[ $ret == "250" ]]; then
+			echo Check warned: $retcode
+		elif [[ $ret != "0" ]]; then
 			echo Check failed: "$retcode"
 			exit "$ret"
 		fi

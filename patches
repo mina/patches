@@ -139,28 +139,28 @@ build_each_patch() {
 	echo "Test build patches succeeded"
 }
 
+check_behind() {
+	git fetch "$tree"
+
+	if git status -sb --ahead-behind | head -n 1 \
+					 | grep -q behind; then
+		echo your branch is behind its upstream. you gotta rebase.
+		exit 1
+	fi
+}
+
 clang_format() {
 	cmd_each_patch "git diff -U0 --no-color HEAD~ | /usr/lib/clang-format/clang-format-diff.py -i -p1"
 }
 
 presubmit_quick() {
-	git fetch "$tree"
-
-	git rebase
+	check_behind
 
 	nipa_test "" "patch/build_32bit,patch/build_tools,patch/build_clang,patch/build_allmodconfig_warn,patch/build_clang_rust"
 }
 
 presubmit() {
-	presubmit_quick
-
-: '
-	patch/build_32bit
-	patch/build_tools
-	patch/build_clang
-	patch/build_allmodconfig_warn
-	patch/build_clang_rust
-'
+	check_behind
 
 	nipa_test "" ""
 

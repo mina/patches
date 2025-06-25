@@ -61,8 +61,7 @@ function create() {
 
 	range="$parent..$commit"
 
-	count=$(($(git rev-list --count "$range")))
-
+	count=$(git rev-list --count "$range")
 	if [[ "$count" -lt 1 ]]; then
 		echo "Not enough commits in range: $count"
 		exit 1

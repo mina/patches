@@ -148,7 +148,7 @@ presubmit_quick() {
 
 	git rebase
 
-	nipa_test series/series_format,patch/tree_selection,series/ynl,series/fixes_present,patch/header_inline,patch/cc_maintainers,patch/verify_signedoff,patch/shellcheck,patch/deprecated_api,patch/pylint,patch/yamllint,patch/check_selftest,patch/verify_fixes,patch/checkpatch,patch/kdoc,patch/source_inline
+	nipa_test "" "patch/build_32bit,patch/build_tools,patch/build_clang,patch/build_allmodconfig_warn,patch/build_clang_rust"
 }
 
 presubmit() {
@@ -162,7 +162,7 @@ presubmit() {
 	patch/build_clang_rust
 '
 
-	nipa_test patch/build_allmodconfig_warn
+	nipa_test "" ""
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }
@@ -174,7 +174,8 @@ send_no_confirm() {
 }
 
 nipa_test() {
-	nipa_test="$1"
+	local includes="$1"
+	local excludes="$2"
 
 	create
 
@@ -191,7 +192,8 @@ nipa_test() {
 		tests = $SCRIPT_DIR/nipa/tests
 
 		[tests]
-		include = $nipa_test
+		include = $includes
+		exclude = patch/signed,$excludes
 EOF
 
 	rm -rf ./patches.nipa/

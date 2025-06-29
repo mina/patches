@@ -17,7 +17,7 @@ vim ...
 git a .
 git cm -m "my patch"
 
-# clang-format the patches
+# clang-format the patches in `git rebase --interactive`
 patches clang_format
 
 # Creates patches under patches.my-branch/
@@ -36,6 +36,6 @@ patches patches nipa_test patch/deprecated_api,patch/verify_signedoff
 # net-next in this case
 patches send -v 1
 
-# Run all the presubmits and send the patches without confirming
+# Run all the presubmits and send the patches without asking for confirmation
 patches send_no_confirm -v 1
 ```

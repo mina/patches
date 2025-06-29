@@ -213,15 +213,20 @@ EOF
 
 	git checkout "$head" -q
 
+	local ret=0
 	for retcode in $(find patches.nipa -iname retcode); do
-		ret="$(cat "$retcode")"
-		if [[ $ret == "250" ]]; then
-			echo Check warned: $retcode
-		elif [[ $ret != "0" ]]; then
+		rettemp="$(cat "$retcode")"
+		if [[ $rettemp == "250" ]]; then
+			echo Check warned: "$retcode"
+		elif [[ $rettemp != "0" ]]; then
 			echo Check failed: "$retcode"
-			exit "$ret"
+			ret=$rettemp
 		fi
 	done
+
+	if [[ $ret == 0 ]]; then
+		exit "$ret"
+	fi
 }
 
 command="$1"

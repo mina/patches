@@ -83,9 +83,9 @@ function create() {
 		--nomultiline)
 
 	if [[ $RFC == 0 ]]; then
-		PREFIX="PATCH $tree"
+		PREFIX=${PREFIX:-PATCH $tree}
 	else
-		PREFIX="PATCH RFC $tree"
+		PREFIX=${PREFIX:-PATCH RFC $tree}
 	fi
 
 	files=$(git format-patch \

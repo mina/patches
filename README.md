@@ -36,6 +36,9 @@ patches patches nipa_test patch/deprecated_api,patch/verify_signedoff
 # net-next in this case
 patches send -v 1
 
+# Send to a specific recipient overriding get_maintainer.pl routing:
+SEND_TO="person@corp.com" SEND_CC="SUPPRESS" patches send -v 1
+
 # Run all the presubmits and send the patches without asking for confirmation
 patches send_no_confirm -v 1
 ```

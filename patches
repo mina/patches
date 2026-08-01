@@ -24,6 +24,9 @@
 # # Send the patches:
 # patches send -v 1
 #
+# # Send to a specific recipient overriding get_maintainer.pl routing:
+# SEND_TO="person@corp.com" SEND_CC="SUPPRESS" patches send -v 1
+#
 # # Run all the presubmits and send the patches without confirming:
 # patches send_no_confirm -v 1
 
@@ -74,13 +77,21 @@ function create() {
 			--description-file=.description.txt"
 	fi
 
-	to=$(git diff "$range" | ./scripts/get_maintainer.pl \
-		--no-git-fallback --norolestats -nom -nor --nomoderated \
-		--nomultiline)
+	if [[ -n "$SEND_TO" ]]; then
+		to="$SEND_TO"
+	else
+		to=$(git diff "$range" | ./scripts/get_maintainer.pl \
+			--no-git-fallback --norolestats -nom -nor --nomoderated \
+			--nomultiline)
+	fi
 
-	cc=$(git diff "$range" | ./scripts/get_maintainer.pl \
-		--git-min-percent 25 --norolestats -nol --nomoderated \
-		--nomultiline)
+	if [[ -n "${SEND_CC+x}" ]]; then
+		cc="$SEND_CC"
+	else
+		cc=$(git diff "$range" | ./scripts/get_maintainer.pl \
+			--git-min-percent 25 --norolestats -nol --nomoderated \
+			--nomultiline)
+	fi
 
 	if [[ $RFC == 0 ]]; then
 		PREFIX=${PREFIX:-PATCH $tree}
@@ -118,7 +129,7 @@ send() {
 		DRY_RUN="--dry-run"
 	fi
 
-	yes | git send-email $files --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN
+	yes | git send-email $files --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN $SEND_EMAIL_OPTS
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }

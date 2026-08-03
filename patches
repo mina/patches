@@ -24,6 +24,9 @@
 # # Send the patches:
 # patches send -v 1
 #
+# # Send strictly to your own inbox for isolated local review (bypassing CCs):
+# patches send_internal_review -v 1
+#
 # # Send to a specific recipient overriding get_maintainer.pl routing:
 # SEND_TO="person@corp.com" SEND_CC="SUPPRESS" patches send -v 1
 #
@@ -129,9 +132,17 @@ send() {
 		DRY_RUN="--dry-run"
 	fi
 
-	yes | git send-email $files --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN $SEND_EMAIL_OPTS
+	git send-email $files --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN $SEND_EMAIL_OPTS
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
+}
+
+send_internal_review() {
+	export SEND_TO="$(git config user.email)"
+	export SEND_CC="SUPPRESS"
+	export CONFIRM="--confirm=never"
+	export SEND_EMAIL_OPTS="--suppress-cc=all"
+	send "$@"
 }
 
 # Runs a command on each patch
@@ -259,4 +270,6 @@ elif [ "$command" == "clang_format" ]; then
 	clang_format "$@"
 elif [ "$command" == "nipa_test" ]; then
 	nipa_test "$@"
+elif [ "$command" == "send_internal_review" ]; then
+	send_internal_review "$@"
 fi

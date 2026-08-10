@@ -141,7 +141,7 @@ send_internal_review() {
 	export SEND_TO="$(git config user.email)"
 	export SEND_CC="SUPPRESS"
 	export CONFIRM="--confirm=never"
-	export SEND_EMAIL_OPTS="--suppress-cc=all"
+	export SEND_EMAIL_OPTS="--suppress-cc=all --in-reply-to= --to=$SEND_TO"
 	send "$@"
 }
 
@@ -183,13 +183,13 @@ check_behind() {
 presubmit_quick() {
 	check_behind
 
-	nipa_test "" "patch/build_32bit,patch/build_tools,patch/build_clang,patch/build_allmodconfig_warn,patch/build_clang_rust"
+	nipa_test "" "patch/build_32bit patch/build_tools patch/build_clang patch/build_allmodconfig_warn patch/build_clang_rust patch/signed patch/cc_maintainers"
 }
 
 presubmit() {
 	check_behind
 
-	nipa_test "" ""
+	nipa_test "" "patch/signed patch/cc_maintainers"
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }
@@ -204,34 +204,20 @@ nipa_test() {
 	local includes="$1"
 	local excludes="$2"
 
+
 	create
-
-	cat > nipa.config <<EOF
-		[log]
-		type = stdout
-		path = none
-		file = none
-
-		[results]
-		dir = ./patches.nipa/results
-
-		[dirs]
-		tests = $SCRIPT_DIR/nipa/tests
-
-		[tests]
-		include = $includes
-		exclude = patch/signed,$excludes
-EOF
 
 	rm -rf ./patches.nipa/
 	mkdir -p ./patches.nipa/
 
 	git branch -D nipa-scratch || true
-	git checkout -b nipa-scratch
+	git checkout -b nipa-scratch "$parent"
 
 	"$SCRIPT_DIR"/nipa/ingest_mdir.py \
 	  --mdir "$(pwd)"/patches."$head" \
-	  --tree "$(pwd)" --tree-name "$tree" --tree-branch "$tree"/main
+	  --tree "$(pwd)" --tree-name "$tree" --result-dir "$(pwd)"/patches.nipa \
+	  ${excludes:+-d $excludes} \
+	  ${includes:+-t $includes}
 
 	git checkout "$head" -q
 
@@ -246,7 +232,7 @@ EOF
 		fi
 	done
 
-	if [[ $ret == 0 ]]; then
+	if [[ $ret != 0 ]]; then
 		exit "$ret"
 	fi
 }

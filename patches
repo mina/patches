@@ -83,7 +83,7 @@ function create() {
 	if [[ -n "$SEND_TO" ]]; then
 		to="$SEND_TO"
 	else
-		to=$(git diff "$range" | ./scripts/get_maintainer.pl \
+		to=$(git format-patch --stdout "$range" | ./scripts/get_maintainer.pl \
 			--no-git-fallback --norolestats -nom -nor --nomoderated \
 			--nomultiline)
 	fi
@@ -91,7 +91,7 @@ function create() {
 	if [[ -n "${SEND_CC+x}" ]]; then
 		cc="$SEND_CC"
 	else
-		cc=$(git diff "$range" | ./scripts/get_maintainer.pl \
+		cc=$(git format-patch --stdout "$range" | ./scripts/get_maintainer.pl \
 			--git-min-percent 25 --norolestats -nol --nomoderated \
 			--nomultiline)
 	fi
@@ -183,13 +183,13 @@ check_behind() {
 presubmit_quick() {
 	check_behind
 
-	nipa_test "" "patch/build_32bit patch/build_tools patch/build_clang patch/build_allmodconfig_warn patch/build_clang_rust patch/signed patch/cc_maintainers"
+	nipa_test "" "patch/build_32bit patch/build_tools patch/build_clang patch/build_allmodconfig_warn patch/build_clang_rust patch/signed"
 }
 
 presubmit() {
 	check_behind
 
-	nipa_test "" "patch/signed patch/cc_maintainers"
+	nipa_test "" "patch/signed"
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }

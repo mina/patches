@@ -114,7 +114,7 @@ function create() {
 
 	# Delete change-id
 	for file in $files; do
-		sed '/Change-Id:/d' "$file" -i
+		sed -i '/^[[:space:]]*Change-Id:/Id' "$file"
 	done
 
 	echo "$files"

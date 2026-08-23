@@ -74,7 +74,7 @@ function create() {
 	fi
 
 	if git config branch."$head".description > .description.txt &&
-	   [[ $count -gt 1 ]]; then
+	   [[ $count -gt 2 ]]; then
 		cover_letter="--cover-letter \
 			--cover-from-description=auto \
 			--description-file=.description.txt"

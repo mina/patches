@@ -42,3 +42,6 @@ SEND_TO="person@corp.com" SEND_CC="SUPPRESS" patches send -v 1
 # Run all the presubmits and send the patches without asking for confirmation
 patches send_no_confirm -v 1
 ```
+
+## General Rules
+* Reviewed-by tags should be applied in chronological order, underneath the signed-off-by of the author.

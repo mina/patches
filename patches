@@ -138,6 +138,7 @@ send() {
 }
 
 send_internal_review() {
+	export PREFIX="PATCH INTERNAL REVIEW $tree"
 	export SEND_TO="$(git config user.email)"
 	export SEND_CC="SUPPRESS"
 	export CONFIRM="--confirm=never"

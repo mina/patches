@@ -19,7 +19,7 @@
 # patches presubmit
 #
 # # Run a set of nipa tests:
-# patches patches nipa_test patch/deprecated_api,patch/verify_signedoff
+# patches nipa_test "patch/deprecated_api patch/verify_signedoff"
 #
 # # Send the patches:
 # patches send -v 1
@@ -218,7 +218,7 @@ nipa_test() {
 	  --mdir "$(pwd)"/patches."$head" \
 	  --tree "$(pwd)" --tree-name "$tree" --result-dir "$(pwd)"/patches.nipa \
 	  ${excludes:+-d $excludes} \
-	  ${includes:+-t $includes}
+	  ${includes:+-t $includes} || { git checkout "$head" -q; exit 1; }
 
 	git checkout "$head" -q
 

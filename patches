@@ -108,7 +108,7 @@ function create() {
 		"$range" \
 		$cover_letter \
 		--to="$to" \
-		--cc="$cc" \
+		${cc:+--cc="$cc"} \
 		--subject-prefix="$PREFIX" \
 		"$@")
 
@@ -140,7 +140,7 @@ send() {
 send_internal_review() {
 	export PREFIX="PATCH INTERNAL REVIEW $tree"
 	export SEND_TO="$(git config user.email)"
-	export SEND_CC="SUPPRESS"
+	export SEND_CC=""
 	export CONFIRM="--confirm=never"
 	export SEND_EMAIL_OPTS="--suppress-cc=all --in-reply-to= --to=$SEND_TO"
 	send "$@"

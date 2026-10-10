@@ -80,26 +80,46 @@ function create() {
 			--description-file=.description.txt"
 	fi
 
+	if [[ $RFC == 0 ]]; then
+		PREFIX=${PREFIX:-PATCH $tree}
+	else
+		PREFIX=${PREFIX:-PATCH RFC $tree}
+	fi
+
+	files=$(git format-patch \
+		--base "$parent" \
+		-o "patches.$head" \
+		"$range" \
+		$cover_letter \
+		--subject-prefix="$PREFIX" \
+		"$@")
+
+	# Delete change-id
+	for file in $files; do
+		sed -i '/^[[:space:]]*Change-Id:/Id' "$file"
+	done
+
+	local patch_files=()
+	for file in $files; do
+		if [[ ! "$file" =~ 0000-cover-letter\.patch$ ]]; then
+			patch_files+=("$file")
+		fi
+	done
+
 	if [[ -n "$SEND_TO" ]]; then
 		to="$SEND_TO"
 	else
-		to=$(git format-patch --stdout "$range" | ./scripts/get_maintainer.pl \
+		to=$(./scripts/get_maintainer.pl \
 			--no-git-fallback --norolestats -nom -nor --nomoderated \
-			--nomultiline)
+			--nomultiline "${patch_files[@]}")
 	fi
 
 	if [[ -n "${SEND_CC+x}" ]]; then
 		cc="$SEND_CC"
 	else
-		cc=$(git format-patch --stdout "$range" | ./scripts/get_maintainer.pl \
+		cc=$(./scripts/get_maintainer.pl \
 			--git-min-percent 25 --norolestats -nol --nomoderated \
-			--nomultiline)
-	fi
-
-	if [[ $RFC == 0 ]]; then
-		PREFIX=${PREFIX:-PATCH $tree}
-	else
-		PREFIX=${PREFIX:-PATCH RFC $tree}
+			--nomultiline "${patch_files[@]}")
 	fi
 
 	files=$(git format-patch \

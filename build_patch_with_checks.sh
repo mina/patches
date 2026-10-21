@@ -1,116 +1,143 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
 
-cc="ccache gcc"
-output_dir=build_allmodconfig_warn/
+set -o pipefail
+
 ncpu=$(grep -c processor /proc/cpuinfo)
-build_flags="-Oline -j $ncpu W=1 C=1"
-tmpfile_o=$(mktemp)
-tmpfile_n=$(mktemp)
+HEAD=$(git rev-parse HEAD)
 rc=0
 
-if [ -e .first_in_series ]; then
-  FIRST_IN_SERIES=1
-  rm -rf .first_in_series
-else
-  FIRST_IN_SERIES=0
-fi
+get_build_targets() {
+  local targets=()
+  local f cfile base
 
-prep_config() {
-  if [ -z $PATCHES_CONFIG ]; then
-    echo "PATCHES_CONFIG not set. Aborting..."
-    exit 1
+  for f in $(git diff --name-only HEAD~.."$HEAD"); do
+    case "$f" in
+      tools/*|Documentation/*|samples/*|scripts/*|usr/*)
+        continue
+        ;;
+      *.c)
+        if [ -f "$f" ]; then
+          targets+=("${f%.c}.o")
+        fi
+        ;;
+    esac
+  done
+
+  if [ ${#targets[@]} -eq 0 ]; then
+    for f in $(git diff --name-only HEAD~.."$HEAD"); do
+      case "$f" in
+        *.h)
+          base=$(basename "$f")
+          for cfile in $(git grep -l "$base" -- 'net/*.c' 'drivers/net/*.c' 2>/dev/null); do
+            if [ -f "$cfile" ]; then
+              targets+=("${cfile%.c}.o")
+            fi
+          done
+          ;;
+      esac
+    done
   fi
 
-  KCONFIG_ALLCONFIG="$PATCHES_CONFIG" make CC="$cc" O=$output_dir allnoconfig
-  ./scripts/config --file $output_dir/.config -d werror
-  ./scripts/config --file $output_dir/.config -d drm_werror
-  ./scripts/config --file $output_dir/.config -d kvm_werror
+  printf '%s\n' "${targets[@]}" | sed '/^$/d' | sort -u | tr '\n' ' '
+}
+
+clean_targets() {
+  local out=$1
+  shift
+  local t
+  for t in "$@"; do
+    rm -f "$out/$t"
+  done
 }
 
 clean_up_output() {
-    local file=$1
-
-    # modpost triggers this randomly on use of existing symbols
-    sed -i '/arch\/x86\/boot.* warning: symbol .* was not declared. Should it be static?/d' $file
+  local file=$1
+  sed -i '/arch\/x86\/boot.* warning: symbol .* was not declared. Should it be static?/d' "$file"
+  sed -i '/error: bad constant expression/d' "$file"
 }
 
-echo "Using $build_flags redirect to $tmpfile_o and $tmpfile_n"
-echo "CC=$cc"
-$cc --version | head -n1
+run_targeted_build() {
+  local name=$1
+  local output_dir=$2
+  local cc=$3
+  local extra_make_args=$4
+  local disable_rust=$5
 
-HEAD=$(git rev-parse HEAD)
+  local tmpfile_o
+  local tmpfile_n
+  tmpfile_o=$(mktemp)
+  tmpfile_n=$(mktemp)
 
-echo "Tree base:"
-# git log -1 --pretty='%h ("%s")' HEAD~
+  git checkout -q "$HEAD"
+  local targets_after
+  targets_after=$(get_build_targets)
+  if [ -z "$targets_after" ] && ! git diff --name-only HEAD~.."$HEAD" | grep -q -E "Kconfig$"; then
+    echo "  [$name] No kernel C targets touched, skip"
+    rm -f "$tmpfile_o" "$tmpfile_n"
+    return 0
+  fi
 
-if [ x$FIRST_IN_SERIES == x0 ] && \
-   ! git diff --name-only HEAD~ | grep -q -E "Kconfig$"
-then
-    echo "Skip baseline build, not the first patch and no Kconfig updates"
+  if [ ! -f "$output_dir/.config" ] || \
+     [ ! -f "$output_dir/include/generated/utsrelease.h" ] || \
+     git diff --name-only HEAD~.."$HEAD" | grep -q -E "Kconfig$"
+  then
+    if [ -n "$PATCHES_CONFIG" ]; then
+      KCONFIG_ALLCONFIG="$PATCHES_CONFIG" make CC="$cc" $extra_make_args O="$output_dir" allnoconfig >/dev/null
+    else
+      make CC="$cc" $extra_make_args O="$output_dir" allmodconfig >/dev/null
+    fi
+    ./scripts/config --file "$output_dir/.config" -d werror
+    ./scripts/config --file "$output_dir/.config" -d drm_werror
+    ./scripts/config --file "$output_dir/.config" -d kvm_werror
+    if [ "$disable_rust" = "1" ]; then
+      ./scripts/config --file "$output_dir/.config" -d rust
+    fi
+    make CC="$cc" $extra_make_args O="$output_dir" -j "$ncpu" olddefconfig modules_prepare >/dev/null
+  fi
+
+  git checkout -q HEAD~
+  local targets_before
+  targets_before=$(get_build_targets)
+  if [ -n "$targets_before" ]; then
+    clean_targets "$output_dir" $targets_before
+    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_before 2> >(tee "$tmpfile_o" >&2) >/dev/null
+  fi
+  clean_up_output "$tmpfile_o"
+  local incumbent
+  incumbent=$(grep -i -c "\(warn\|error\)" "$tmpfile_o" || true)
+
+  git checkout -q "$HEAD"
+  targets_after=$(get_build_targets)
+  local build_rc=0
+  if [ -n "$targets_after" ]; then
+    clean_targets "$output_dir" $targets_after
+    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_after 2> >(tee "$tmpfile_n" >&2) >/dev/null || build_rc=1
+  fi
+  clean_up_output "$tmpfile_n"
+  local current
+  current=$(grep -i -c "\(warn\|error\)" "$tmpfile_n" || true)
+
+  echo "  [$name] Errors and warnings before: $incumbent this patch: $current"
+
+  if [ "$current" -gt "$incumbent" ] || [ "$build_rc" -ne 0 ]; then
+    echo "  [$name] FAIL: New errors/warnings or build failure" 1>&2
+    diff -U 0 "$tmpfile_o" "$tmpfile_n" 1>&2 || true
+    rm -f "$tmpfile_o" "$tmpfile_n"
+    return 1
+  fi
+
+  rm -f "$tmpfile_o" "$tmpfile_n"
+  return 0
+}
+
+echo "=== Targeted build checks for $(git log -1 --pretty='%h ("%s")' "$HEAD") ==="
+if [ -n "$PATCHES_CONFIG" ]; then
+  run_targeted_build "custom_config" "build_allmodconfig_warn/" "ccache gcc" "W=1 C=1" "1" || rc=1
 else
-    echo "Baseline building the tree"
-
-    prep_config
-    make CC="$cc" O=$output_dir $build_flags
+  run_targeted_build "build_allmodconfig_warn" "build_allmodconfig_warn/" "ccache gcc" "W=1 C=1" "1" || rc=1
+  run_targeted_build "build_clang" "build_clang/" "ccache clang" "LLVM=1 W=1" "0" || rc=1
+  run_targeted_build "build_32bit" "build_32bit/" "ccache gcc" "ARCH=i386 W=1" "0" || rc=1
 fi
-
-# Check if new files were added, new files will cause mod re-linking
-# so all module and linker related warnings will pop up in the "after"
-# but not "before". To avoid this we need to force re-linking on
-# the "before", too.
-touch_relink=/dev/null
-if ! git log --diff-filter=A HEAD~.. --exit-code >>/dev/null || \
-   git diff --name-only HEAD~ | grep -q -E "Makefile$" || \
-   git diff --name-only HEAD~ | grep -q -E "Kconfig$"
-then
-    echo "Trying to force re-linking, new files were added"
-    touch_relink=${output_dir}/include/generated/utsrelease.h
-fi
-
-touch $touch_relink
-
-git checkout -q HEAD~
-
-echo "Building the tree before the patch"
-
-prep_config
-make CC="$cc" O=$output_dir $build_flags 2> >(tee $tmpfile_o >&2)
-clean_up_output $tmpfile_o
-incumbent=$(grep -i -c "\(warn\|error\)" $tmpfile_o)
-
-echo "Building the tree with the patch"
-
-git checkout -q $HEAD
-
-# Also force rebuild "after" in case the file added isn't important.
-touch $touch_relink
-
-prep_config
-make CC="$cc" O=$output_dir $build_flags 2> >(tee $tmpfile_n >&2) || rc=1
-clean_up_output $tmpfile_n
-current=$(grep -i -c "\(warn\|error\)" $tmpfile_n)
-
-echo "Errors and warnings before: $incumbent this patch: $current"
-
-if [ $current -gt $incumbent ]; then
-  echo "New errors added" 1>&2
-  diff -U 0 $tmpfile_o $tmpfile_n 1>&2
-
-  echo "Per-file breakdown" 1>&2
-  tmpfile_fo=$(mktemp)
-  tmpfile_fn=$(mktemp)
-
-  grep -i "\(warn\|error\)" $tmpfile_o | sed -n 's@\(^\.\./[/a-zA-Z0-9_.-]*.[ch]\):.*@\1@p' | sort | uniq -c \
-    > $tmpfile_fo
-  grep -i "\(warn\|error\)" $tmpfile_n | sed -n 's@\(^\.\./[/a-zA-Z0-9_.-]*.[ch]\):.*@\1@p' | sort | uniq -c \
-    > $tmpfile_fn
-
-  diff -U 0 $tmpfile_fo $tmpfile_fn 1>&2
-  rm $tmpfile_fo $tmpfile_fn
-
-  rc=1
-fi
-
-rm $tmpfile_o $tmpfile_n
 
 exit $rc

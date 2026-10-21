@@ -154,7 +154,7 @@ send() {
 		DRY_RUN="--dry-run"
 	fi
 
-	git send-email $files --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN $SEND_EMAIL_OPTS
+	git send-email $files --to-cmd=true --cc-cover --8bit-encoding=UTF-8 $CONFIRM $DRY_RUN $SEND_EMAIL_OPTS
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }
@@ -203,6 +203,23 @@ check_behind() {
 	fi
 }
 
+presubmit_builds() {
+	local commit=""
+	for commit in $(git rev-list "$head" --max-count=50); do
+		if ! git show "$commit" --oneline | grep -q "not-for-review"; then
+			break;
+		fi
+	done
+
+	local range="$parent..$commit"
+	local c
+	for c in $(git rev-list --reverse "$range"); do
+		git checkout -q "$c"
+		"$SCRIPT_DIR/build_patch_with_checks.sh" || { git checkout "$head" -q; exit 1; }
+	done
+	git checkout "$head" -q
+}
+
 presubmit_quick() {
 	check_behind
 
@@ -210,9 +227,8 @@ presubmit_quick() {
 }
 
 presubmit() {
-	check_behind
-
-	nipa_test "" "patch/signed"
+	presubmit_quick
+	presubmit_builds
 
 	git tag "$(date +%F-%s)-$head-${FUNCNAME[0]}"
 }

@@ -42,10 +42,9 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 head=$(git rev-parse --abbrev-ref --symbolic-full-name HEAD)
 parent=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}")
 tree="${parent%/*}"
-
-if [[ "$tree" != "net" && "$tree" != "net-next" ]]; then
-	echo patches only supports net and net-next trees at the moment, detected invalid tree called: $tree
-	exit 1
+tree_prefix=""
+if [[ "$tree" == "net" || "$tree" == "net-next" ]]; then
+	tree_prefix=" $tree"
 fi
 
 parent="${BASE:-$parent}"
@@ -83,9 +82,9 @@ function create() {
 	fi
 
 	if [[ $RFC == 0 ]]; then
-		PREFIX=${PREFIX:-PATCH $tree}
+		PREFIX=${PREFIX:-PATCH${tree_prefix}}
 	else
-		PREFIX=${PREFIX:-PATCH RFC $tree}
+		PREFIX=${PREFIX:-PATCH RFC${tree_prefix}}
 	fi
 
 	files=$(git format-patch \
@@ -160,7 +159,7 @@ send() {
 }
 
 send_internal_review() {
-	export PREFIX="PATCH INTERNAL REVIEW $tree"
+	export PREFIX="PATCH INTERNAL REVIEW${tree_prefix}"
 	export SEND_TO="$(git config user.email)"
 	export SEND_CC=""
 	export CONFIRM="--confirm=never"
@@ -252,9 +251,14 @@ nipa_test() {
 	git branch -D nipa-scratch || true
 	git checkout -b nipa-scratch "$parent"
 
+	local nipa_tree="$tree"
+	if [[ "$parent" == */next && "$nipa_tree" != *next* ]]; then
+		nipa_tree="${tree}-next"
+	fi
+
 	"$SCRIPT_DIR"/nipa/ingest_mdir.py \
 	  --mdir "$(pwd)"/patches."$head" \
-	  --tree "$(pwd)" --tree-name "$tree" --result-dir "$(pwd)"/patches.nipa \
+	  --tree "$(pwd)" --tree-name "$nipa_tree" --result-dir "$(pwd)"/patches.nipa \
 	  ${excludes:+-d $excludes} \
 	  ${includes:+-t $includes} || { git checkout "$head" -q; exit 1; }
 

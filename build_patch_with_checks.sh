@@ -29,7 +29,9 @@ get_build_targets() {
       case "$f" in
         *.h)
           base=$(basename "$f")
-          for cfile in $(git grep -l "$base" -- 'net/*.c' 'drivers/net/*.c' 2>/dev/null); do
+          local dir
+          dir=$(dirname "$f")
+          for cfile in $(git grep -l "$base" -- "$dir/*.c" 'net/core/*.c' 2>/dev/null | head -n 5); do
             if [ -f "$cfile" ]; then
               targets+=("${cfile%.c}.o")
             fi

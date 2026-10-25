@@ -110,17 +110,21 @@ function create() {
 	if [[ -n "$SEND_TO" ]]; then
 		to="$SEND_TO"
 	else
-		to=$(./scripts/get_maintainer.pl \
-			--no-git-fallback --norolestats -nom -nor --nomoderated \
-			--nomultiline "${patch_files[@]}")
+		to=$(for pf in "${patch_files[@]}"; do
+			./scripts/get_maintainer.pl \
+				--no-git-fallback --norolestats -nom -nor --nomoderated \
+				"$pf" &
+		done | awk '!seen[$0]++' | paste -sd ',' - | sed 's/,/, /g')
 	fi
 
 	if [[ -n "${SEND_CC+x}" ]]; then
 		cc="$SEND_CC"
 	else
-		cc=$(./scripts/get_maintainer.pl \
-			--git-min-percent 25 --norolestats -nol --nomoderated \
-			--nomultiline "${patch_files[@]}")
+		cc=$(for pf in "${patch_files[@]}"; do
+			./scripts/get_maintainer.pl \
+				--git-min-percent 25 --norolestats -nol --nomoderated \
+				"$pf" &
+		done | awk '!seen[$0]++' | paste -sd ',' - | sed 's/,/, /g')
 	fi
 
 	files=$(git format-patch \

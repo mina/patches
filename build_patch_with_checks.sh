@@ -98,9 +98,14 @@ run_targeted_build() {
     make CC="$cc" $extra_make_args O="$output_dir" -j "$ncpu" olddefconfig modules_prepare >/dev/null
   fi
 
-  git checkout -q HEAD~
-  local targets_before
-  targets_before=$(get_build_targets)
+  git checkout -q "${HEAD}~"
+  local targets_before=""
+  local t
+  for t in $targets_after; do
+    if [ -f "${t%.o}.c" ]; then
+      targets_before="$targets_before $t"
+    fi
+  done
   if [ -n "$targets_before" ]; then
     clean_targets "$output_dir" $targets_before
     make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_before 2> >(tee "$tmpfile_o" >&2) >/dev/null
@@ -110,7 +115,6 @@ run_targeted_build() {
   incumbent=$(grep -i -c "\(warn\|error\)" "$tmpfile_o" || true)
 
   git checkout -q "$HEAD"
-  targets_after=$(get_build_targets)
   local build_rc=0
   if [ -n "$targets_after" ]; then
     clean_targets "$output_dir" $targets_after

@@ -106,9 +106,10 @@ run_targeted_build() {
       targets_before="$targets_before $t"
     fi
   done
+  local before_rc=0
   if [ -n "$targets_before" ]; then
     clean_targets "$output_dir" $targets_before
-    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_before 2> >(tee "$tmpfile_o" >&2) >/dev/null
+    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_before 2> >(tee "$tmpfile_o" >&2) >/dev/null || before_rc=1
   fi
   clean_up_output "$tmpfile_o"
   local incumbent
@@ -126,7 +127,7 @@ run_targeted_build() {
 
   echo "  [$name] Errors and warnings before: $incumbent this patch: $current"
 
-  if [ "$current" -gt "$incumbent" ] || [ "$build_rc" -ne 0 ]; then
+  if [ "$current" -gt "$incumbent" ] || { [ "$build_rc" -ne 0 ] && [ "$before_rc" -eq 0 ]; }; then
     echo "  [$name] FAIL: New errors/warnings or build failure" 1>&2
     diff -U 0 "$tmpfile_o" "$tmpfile_n" 1>&2 || true
     rm -f "$tmpfile_o" "$tmpfile_n"

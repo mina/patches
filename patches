@@ -70,12 +70,24 @@ function create() {
 
 	count=$(git rev-list --count "$range")
 	if [[ "$count" -lt 1 ]]; then
-		echo "Not enough commits in range: $count"
+		echoerr "Not enough commits in range: $count"
 		exit 1
 	fi
 
-	if git config branch."$head".description > .description.txt &&
-	   [[ -s .description.txt && $count -gt 1 ]]; then
+	if [[ $count -gt 1 ]]; then
+		if ! git config branch."$head".description > .description.txt ||
+		   [[ ! -s .description.txt ]]; then
+			echoerr "Error: multi-patch series ($count patches) requires git config branch.$head.description"
+			exit 1
+		fi
+
+		local cover_subj
+		cover_subj=$(head -n 1 .description.txt)
+		if git log --format=%s "$range" | grep -Fxq "$cover_subj"; then
+			echoerr "Error: cover letter subject in branch.$head.description ('$cover_subj') matches a patch subject in $range; Gmail will thread that patch as a reply to [0/$count]. Give the cover letter a distinct series title."
+			exit 1
+		fi
+
 		cover_letter="--cover-letter \
 			--cover-from-description=auto \
 			--description-file=.description.txt"

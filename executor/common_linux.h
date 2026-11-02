@@ -540,6 +540,50 @@ static void netlink_add_ipvlan(struct nlmsg* nlmsg, int sock, const char* name, 
 		debug("netlink: add %s type ipvlan link %s mode %d: %s\n", name, link, mode, strerror(errno));
 	}
 }
+
+#ifndef IFLA_VRF_TABLE
+#define IFLA_VRF_TABLE 1
+#endif
+
+static void netlink_add_vrf(struct nlmsg* nlmsg, int sock, const char* name, uint32 table)
+{
+	netlink_add_device_impl(nlmsg, "vrf", name, false);
+	netlink_nest(nlmsg, IFLA_INFO_DATA);
+	netlink_attr(nlmsg, IFLA_VRF_TABLE, &table, sizeof(table));
+	netlink_done(nlmsg);
+	netlink_done(nlmsg);
+	int err = netlink_send(nlmsg, sock);
+	if (err < 0) {
+		debug("netlink: add %s type vrf table %u: %s\n", name, table, strerror(errno));
+	}
+}
+
+static void netlink_add_route4_onlink(struct nlmsg* nlmsg, int sock, const char* dev,
+				      const char* dst_ip, const char* src_ip, uint32 table)
+{
+	struct rtmsg rtm;
+	memset(&rtm, 0, sizeof(rtm));
+	rtm.rtm_family = AF_INET;
+	rtm.rtm_dst_len = 32;
+	rtm.rtm_table = table < 256 ? table : RT_TABLE_UNSPEC;
+	rtm.rtm_protocol = RTPROT_BOOT;
+	rtm.rtm_scope = RT_SCOPE_LINK;
+	rtm.rtm_type = RTN_UNICAST;
+	netlink_init(nlmsg, RTM_NEWROUTE, NLM_F_CREATE | NLM_F_REPLACE, &rtm, sizeof(rtm));
+	if (table >= 256)
+		netlink_attr(nlmsg, RTA_TABLE, &table, sizeof(table));
+	struct in_addr dst, src;
+	inet_pton(AF_INET, dst_ip, &dst);
+	inet_pton(AF_INET, src_ip, &src);
+	int oif = if_nametoindex(dev);
+	netlink_attr(nlmsg, RTA_DST, &dst, sizeof(dst));
+	netlink_attr(nlmsg, RTA_PREFSRC, &src, sizeof(src));
+	netlink_attr(nlmsg, RTA_OIF, &oif, sizeof(oif));
+	int err = netlink_send(nlmsg, sock);
+	if (err < 0) {
+		debug("netlink: add route %s dev %s table %u: %s\n", dst_ip, dev, table, strerror(errno));
+	}
+}
 #endif
 
 #if SYZ_EXECUTOR || SYZ_NET_DEVICES || SYZ_NET_INJECTION || SYZ_DEVLINK_PCI || SYZ_802154
@@ -607,7 +651,7 @@ static void netlink_add_addr6(struct nlmsg* nlmsg, int sock,
 }
 #endif
 
-#if SYZ_EXECUTOR || SYZ_NET_INJECTION
+#if SYZ_EXECUTOR || SYZ_NET_INJECTION || SYZ_NET_DEVICES
 static void netlink_add_neigh(struct nlmsg* nlmsg, int sock, const char* name,
 			      const void* addr, int addrsize, const void* mac, int macsize)
 {
@@ -1256,16 +1300,16 @@ static void netdevsim_add(struct nlmsg* nlmsg, int sock, unsigned int addr, unsi
 			close(netns_fd);
 		}
 
-		for (unsigned int p = 1; p < port_count; p++) {
-			char dev[32], ip[32];
-			snprintf(dev, sizeof(dev), "netdevsim%u", p);
-			snprintf(ip, sizeof(ip), DEV_IPV4, 200 + p);
-			netlink_add_addr4(nlmsg, sock, dev, ip);
-			snprintf(ip, sizeof(ip), DEV_IPV6, 200 + p);
-			netlink_add_addr6(nlmsg, sock, dev, ip);
-			uint64 macaddr = DEV_MAC + ((200ull + p) << 40);
-			netlink_device_change(nlmsg, sock, dev, true, 0, &macaddr, ETH_ALEN, NULL);
-		}
+		// Isolate the odd peer of each linked netdevsim pair in vrf0 (table 100)
+		// so socket traffic between main VRF (netdevsim0/2) and vrf0 (netdevsim1/3)
+		// traverses the real nsim_start_xmit -> NAPI RX -> page_pool/devmem wire
+		// instead of short-circuiting over loopback (RT_TABLE_LOCAL).
+		write_file("/proc/sys/net/ipv4/tcp_l3mdev_accept", "1");
+		write_file("/proc/sys/net/ipv4/udp_l3mdev_accept", "1");
+		netlink_add_vrf(nlmsg, sock, "vrf0", 100);
+		netlink_device_change(nlmsg, sock, "vrf0", true, 0, 0, 0, NULL);
+		netlink_device_change(nlmsg, sock, "netdevsim1", false, "vrf0", 0, 0, NULL);
+		netlink_device_change(nlmsg, sock, "netdevsim3", false, "vrf0", 0, 0, NULL);
 	}
 }
 
@@ -1661,6 +1705,9 @@ static void initialize_netdevices(void)
 	    {"wg0", 0},
 	    {"wg1", 0},
 	    {"wg2", 0},
+	    {"netdevsim1", ETH_ALEN},
+	    {"netdevsim2", ETH_ALEN},
+	    {"netdevsim3", ETH_ALEN},
 	};
 	int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if (sock == -1)
@@ -1745,6 +1792,39 @@ static void initialize_netdevices(void)
 		}
 		uint64 macaddr = DEV_MAC + ((i + 10ull) << 40);
 		netlink_device_change(&nlmsg, sock, devices[i].name, true, 0, &macaddr, devices[i].macsize, NULL);
+	}
+	// Install symmetric permanent ARP entries and /32 on-link routes between each
+	// linked netdevsim pair (default VRF <-> vrf0 table 100) so TCP/UDP sockets
+	// connect and transfer data across the linked netdevsim wire immediately.
+	const struct {
+		const char* dev_main;
+		const char* dev_vrf;
+	} nsim_pairs[] = {
+	    {"netdevsim0", "netdevsim1"},
+	    {"netdevsim2", "netdevsim3"},
+	};
+	for (unsigned p = 0; p < sizeof(nsim_pairs) / sizeof(nsim_pairs[0]); p++) {
+		int id_main = -1, id_vrf = -1;
+		for (i = 0; i < sizeof(devices) / sizeof(devices[0]); i++) {
+			if (strcmp(devices[i].name, nsim_pairs[p].dev_main) == 0)
+				id_main = (int)i + 10;
+			else if (strcmp(devices[i].name, nsim_pairs[p].dev_vrf) == 0)
+				id_vrf = (int)i + 10;
+		}
+		if (id_main < 0 || id_vrf < 0)
+			continue;
+		char ip_main[32], ip_vrf[32];
+		sprintf(ip_main, DEV_IPV4, id_main);
+		sprintf(ip_vrf, DEV_IPV4, id_vrf);
+		struct in_addr in_main, in_vrf;
+		inet_pton(AF_INET, ip_main, &in_main);
+		inet_pton(AF_INET, ip_vrf, &in_vrf);
+		uint64 mac_main = DEV_MAC + ((unsigned long long)id_main << 40);
+		uint64 mac_vrf = DEV_MAC + ((unsigned long long)id_vrf << 40);
+		netlink_add_neigh(&nlmsg, sock, nsim_pairs[p].dev_main, &in_vrf, sizeof(in_vrf), &mac_vrf, ETH_ALEN);
+		netlink_add_neigh(&nlmsg, sock, nsim_pairs[p].dev_vrf, &in_main, sizeof(in_main), &mac_main, ETH_ALEN);
+		netlink_add_route4_onlink(&nlmsg, sock, nsim_pairs[p].dev_main, ip_vrf, ip_main, RT_TABLE_MAIN);
+		netlink_add_route4_onlink(&nlmsg, sock, nsim_pairs[p].dev_vrf, ip_main, ip_vrf, 100);
 	}
 	close(sock);
 }

@@ -1,0 +1,108 @@
+# Copyright 2026 syzkaller project authors. All rights reserved.
+# Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
+
+include <linux/net.h>
+include <uapi/linux/netlink.h>
+include <uapi/linux/genetlink.h>
+include <uapi/linux/netdev.h>
+
+resource genl_netdev_family_id[int16]
+resource netdev_dmabuf_id[int32]: 1
+
+type msghdr_netdev[CMD, POLICY] msghdr_netlink[netlink_msg_t[genl_netdev_family_id, genlmsghdr_t[CMD], POLICY]]
+
+syz_genetlink_get_family_id$netdev(name ptr[in, string["netdev"]], fd sock_nl_generic) genl_netdev_family_id
+
+sendmsg$NETDEV_CMD_DEV_GET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_DEV_GET, netdev_dev_get_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_PAGE_POOL_GET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_PAGE_POOL_GET, netdev_page_pool_get_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_PAGE_POOL_STATS_GET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_PAGE_POOL_STATS_GET, netdev_page_pool_stats_get_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_QUEUE_GET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_QUEUE_GET, netdev_queue_get_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_NAPI_GET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_NAPI_GET, netdev_napi_get_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_NAPI_SET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_NAPI_SET, netdev_napi_set_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_QSTATS_GET(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_QSTATS_GET, netdev_qstats_get_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_BIND_RX(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_BIND_RX, netdev_bind_rx_policy]], f flags[send_flags])
+sendmsg$NETDEV_CMD_BIND_TX(fd sock_nl_generic, msg ptr[in, msghdr_netdev[NETDEV_CMD_BIND_TX, netdev_bind_tx_policy]], f flags[send_flags])
+recvmsg$NETDEV_CMD_BIND_REPLY(fd sock_nl_generic, msg ptr[inout, msghdr_netdev_reply], f flags[recv_flags])
+
+msghdr_netdev_reply {
+	addr	const[0, intptr]
+	addrlen	const[0, int32]
+	vec	ptr[inout, iovec[out, netdev_bind_reply]]
+	vlen	const[1, intptr]
+	ctrl	const[0, intptr]
+	ctrllen	const[0, intptr]
+	f	const[0, int32]
+}
+
+netdev_bind_reply {
+	nlmsg_len	int32
+	nlmsg_type	int16
+	nlmsg_flags	int16
+	nlmsg_seq	int32
+	nlmsg_pid	int32
+	cmd		int8
+	version		int8
+	reserved	int16
+	nla_len		int16
+	nla_type	int16
+	id		netdev_dmabuf_id
+} [packed]
+
+netdev_dev_get_policy [
+	NETDEV_A_DEV_IFINDEX	nlattr[NETDEV_A_DEV_IFINDEX, ifindex]
+] [varlen]
+
+netdev_page_pool_get_policy [
+	NETDEV_A_PAGE_POOL_ID	nlattr[NETDEV_A_PAGE_POOL_ID, int64]
+] [varlen]
+
+netdev_page_pool_stats_info_policy [
+	NETDEV_A_PAGE_POOL_ID	nlattr[NETDEV_A_PAGE_POOL_ID, int64]
+] [varlen]
+
+netdev_page_pool_stats_get_policy [
+	NETDEV_A_PAGE_POOL_STATS_INFO	nlnest[NETDEV_A_PAGE_POOL_STATS_INFO, array[netdev_page_pool_stats_info_policy]]
+] [varlen]
+
+netdev_queue_get_policy [
+	NETDEV_A_QUEUE_IFINDEX	nlattr[NETDEV_A_QUEUE_IFINDEX, ifindex]
+	NETDEV_A_QUEUE_TYPE	nlattr[NETDEV_A_QUEUE_TYPE, flags[netdev_queue_types, int32]]
+	NETDEV_A_QUEUE_ID	nlattr[NETDEV_A_QUEUE_ID, int32[0:3]]
+] [varlen]
+
+netdev_napi_get_policy [
+	NETDEV_A_NAPI_ID	nlattr[NETDEV_A_NAPI_ID, int32]
+	NETDEV_A_NAPI_IFINDEX	nlattr[NETDEV_A_NAPI_IFINDEX, ifindex]
+] [varlen]
+
+netdev_napi_set_policy [
+	NETDEV_A_NAPI_ID		nlattr[NETDEV_A_NAPI_ID, int32]
+	NETDEV_A_NAPI_DEFER_HARD_IRQS	nlattr[NETDEV_A_NAPI_DEFER_HARD_IRQS, int32]
+	NETDEV_A_NAPI_GRO_FLUSH_TIMEOUT	nlattr[NETDEV_A_NAPI_GRO_FLUSH_TIMEOUT, int64]
+	NETDEV_A_NAPI_IRQ_SUSPEND_TIMEOUT	nlattr[NETDEV_A_NAPI_IRQ_SUSPEND_TIMEOUT, int64]
+	NETDEV_A_NAPI_THREADED		nlattr[NETDEV_A_NAPI_THREADED, flags[netdev_napi_threaded_flags, int32]]
+] [varlen]
+
+netdev_qstats_get_policy [
+	NETDEV_A_QSTATS_IFINDEX	nlattr[NETDEV_A_QSTATS_IFINDEX, ifindex]
+	NETDEV_A_QSTATS_SCOPE	nlattr[NETDEV_A_QSTATS_SCOPE, const[NETDEV_QSTATS_SCOPE_QUEUE, int64]]
+] [varlen]
+
+netdev_queue_id_policy [
+	NETDEV_A_QUEUE_ID	nlattr[NETDEV_A_QUEUE_ID, int32[0:3]]
+	NETDEV_A_QUEUE_TYPE	nlattr[NETDEV_A_QUEUE_TYPE, flags[netdev_queue_types, int32]]
+] [varlen]
+
+netdev_bind_rx_policy [
+	NETDEV_A_DMABUF_IFINDEX	nlattr[NETDEV_A_DMABUF_IFINDEX, ifindex]
+	NETDEV_A_DMABUF_FD	nlattr[NETDEV_A_DMABUF_FD, fd_dma_buf]
+	NETDEV_A_DMABUF_QUEUES	nlnest[NETDEV_A_DMABUF_QUEUES, array[netdev_queue_id_policy]]
+] [varlen]
+
+netdev_bind_tx_policy [
+	NETDEV_A_DMABUF_IFINDEX	nlattr[NETDEV_A_DMABUF_IFINDEX, ifindex]
+	NETDEV_A_DMABUF_FD	nlattr[NETDEV_A_DMABUF_FD, fd_dma_buf]
+] [varlen]
+
+netdev_queue_types = NETDEV_QUEUE_TYPE_RX, NETDEV_QUEUE_TYPE_TX
+netdev_napi_threaded_flags = NETDEV_NAPI_THREADED_DISABLED, NETDEV_NAPI_THREADED_ENABLED

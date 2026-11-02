@@ -200,6 +200,7 @@ cmsghdr_sock [
 	mark		cmsghdr_t[SOL_SOCKET, SO_MARK, int32]
 	timestamping	cmsghdr_t[SOL_SOCKET, SO_TIMESTAMPING_OLD, int32]
 	txtime		cmsghdr_t[SOL_SOCKET, SCM_TXTIME, int64]
+	devmem_dmabuf	cmsghdr_t[SOL_SOCKET, SCM_DEVMEM_DMABUF, netdev_dmabuf_id]
 ] [varlen]
 
 # Socket options
@@ -226,6 +227,12 @@ getsockopt$SO_BINDTODEVICE(fd sock, level const[SOL_SOCKET], optname const[SO_BI
 getsockopt$sock_buf(fd sock, level const[SOL_SOCKET], optname flags[sockopt_opt_sock_buf], optval buffer[out], optlen ptr[inout, len[optval, int32]])
 getsockopt$SO_COOKIE(fd sock, level const[SOL_SOCKET], optname const[SO_COOKIE], optval ptr[out, int64], optlen ptr[inout, len[optval, int32]])
 getsockopt$SO_NETNS_COOKIE(fd sock, level const[SOL_SOCKET], optname const[SO_NETNS_COOKIE], optval ptr[out, int64], optlen ptr[inout, len[optval, int32]])
+setsockopt$SO_DEVMEM_DONTNEED(fd sock, level const[SOL_SOCKET], optname const[SO_DEVMEM_DONTNEED], optval ptr[in, array[dmabuf_token]], optlen bytesize[optval])
+
+dmabuf_token {
+	token_start	int32
+	token_count	int32
+}
 
 linger {
 	onoff	bool32

@@ -88,10 +88,10 @@ netdev_qstats_get_policy [
 	NETDEV_A_QSTATS_SCOPE	nlattr[NETDEV_A_QSTATS_SCOPE, const[NETDEV_QSTATS_SCOPE_QUEUE, int64]]
 ] [varlen]
 
-netdev_queue_id_policy [
+netdev_queue_id_policy {
 	NETDEV_A_QUEUE_ID	nlattr[NETDEV_A_QUEUE_ID, int32[0:3]]
 	NETDEV_A_QUEUE_TYPE	nlattr[NETDEV_A_QUEUE_TYPE, flags[netdev_queue_types, int32]]
-] [varlen]
+} [packed]
 
 netdev_bind_rx_policy [
 	NETDEV_A_DMABUF_IFINDEX	nlattr[NETDEV_A_DMABUF_IFINDEX, ifindex]

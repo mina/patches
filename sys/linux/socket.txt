@@ -46,7 +46,7 @@ socket_type = SOCK_STREAM, SOCK_DGRAM, SOCK_RAW, SOCK_RDM, SOCK_SEQPACKET, SOCK_
 accept_flags = SOCK_NONBLOCK, SOCK_CLOEXEC
 shutdown_flags = SHUT_RD, SHUT_WR
 send_flags = MSG_CONFIRM, MSG_DONTROUTE, MSG_DONTWAIT, MSG_EOR, MSG_MORE, MSG_NOSIGNAL, MSG_OOB, MSG_PROBE, MSG_BATCH, MSG_FASTOPEN, MSG_ZEROCOPY
-recv_flags = MSG_CMSG_CLOEXEC, MSG_DONTWAIT, MSG_ERRQUEUE, MSG_OOB, MSG_PEEK, MSG_TRUNC, MSG_WAITALL, MSG_WAITFORONE
+recv_flags = MSG_CMSG_CLOEXEC, MSG_DONTWAIT, MSG_ERRQUEUE, MSG_OOB, MSG_PEEK, MSG_TRUNC, MSG_WAITALL, MSG_WAITFORONE, MSG_SOCK_DEVMEM
 cmsg_levels = SOL_SOCKET, IPPROTO_ICMP, SOL_IP, SOL_TCP, SOL_UDP, SOL_IPV6, SOL_ICMPV6, SOL_SCTP, SOL_UDPLITE, SOL_RAW, SOL_AX25, SOL_ATALK, SOL_NETROM, SOL_ROSE, SOL_PACKET, SOL_ATM, SOL_AAL, SOL_IRDA, SOL_NETBEUI, SOL_LLC, SOL_DCCP, SOL_NETLINK, SOL_TIPC, SOL_RXRPC, SOL_PPPOL2TP, SOL_BLUETOOTH, SOL_PNPIPE, SOL_RDS, SOL_IUCV, SOL_CAIF, SOL_ALG, SOL_NFC, SOL_KCM
 
 sock_pair {
@@ -151,6 +151,23 @@ msghdr_sock {
 	msg_controllen	bytesize[msg_control, intptr]
 	msg_flags	const[0, int32]
 }
+
+iovec_devmem {
+	iov_base	intptr[0:65536]
+	iov_len		intptr[1:65536]
+}
+
+msghdr_devmem {
+	msg_name	const[0, intptr]
+	msg_namelen	const[0, int32]
+	msg_iov		ptr[in, array[iovec_devmem]]
+	msg_iovlen	len[msg_iov, intptr]
+	msg_control	ptr[in, array[cmsghdr_t[SOL_SOCKET, SCM_DEVMEM_DMABUF, netdev_dmabuf_id]]]
+	msg_controllen	bytesize[msg_control, intptr]
+	msg_flags	const[0, int32]
+}
+
+sendmsg$devmem(fd sock, msg ptr[in, msghdr_devmem], f flags[send_flags])
 
 send_mmsghdr {
 	msg_hdr	send_msghdr
@@ -392,7 +409,7 @@ rtentry {
 # Note: for roseN and nrN we should use proc type, but for simplicity we currently use N=0.
 # Note: netdevsim0 and netpci0 are renamed in initialize_devlink_ports()
 
-devnames = "", "lo", "tunl0", "gre0", "gretap0", "ip_vti0", "ip6_vti0", "sit0", "ip6tnl0", "ip6gre0", "ip6gretap0", "bond0", "dummy0", "nr0", "rose0", "erspan0", "vlan0", "bridge0", "vcan0", "team0", "syz_tun", "veth0", "veth1", "veth0_to_bridge", "veth1_to_bridge", "veth0_to_bond", "veth1_to_bond", "veth0_to_team", "veth1_to_team", "bridge_slave_0", "bridge_slave_1", "bond_slave_0", "bond_slave_1", "team_slave_0", "team_slave_1", "syzkaller0", "syzkaller1", "veth0_to_hsr", "veth1_to_hsr", "hsr0", "ip6erspan0", "vxcan1", "caif0", "batadv0", "veth0_to_batadv", "veth1_to_batadv", "batadv_slave_0", "batadv_slave_1", "netdevsim0", "netpci0", "nicvf0", "xfrm0", "veth0_virt_wifi", "veth1_virt_wifi", "virt_wifi0", "veth0_vlan", "veth1_vlan", "vlan1", "macvlan0", "macvlan1", "ipvlan0", "ipvlan1", "veth0_macvtap", "veth1_macvtap", "macvtap0", "macsec0", "geneve0", "geneve1", "wg0", "wg1", "wg2", "wlan0", "wlan1", "dvmrp0", "dvmrp1", "pimreg", "pimreg0", "pimreg1", "pim6reg", "pim6reg0", "pim6reg1"
+devnames = "", "lo", "tunl0", "gre0", "gretap0", "ip_vti0", "ip6_vti0", "sit0", "ip6tnl0", "ip6gre0", "ip6gretap0", "bond0", "dummy0", "nr0", "rose0", "erspan0", "vlan0", "bridge0", "vcan0", "team0", "syz_tun", "veth0", "veth1", "veth0_to_bridge", "veth1_to_bridge", "veth0_to_bond", "veth1_to_bond", "veth0_to_team", "veth1_to_team", "bridge_slave_0", "bridge_slave_1", "bond_slave_0", "bond_slave_1", "team_slave_0", "team_slave_1", "syzkaller0", "syzkaller1", "veth0_to_hsr", "veth1_to_hsr", "hsr0", "ip6erspan0", "vxcan1", "caif0", "batadv0", "veth0_to_batadv", "veth1_to_batadv", "batadv_slave_0", "batadv_slave_1", "netdevsim0", "netdevsim1", "netdevsim2", "netdevsim3", "vrf0", "netpci0", "nicvf0", "xfrm0", "veth0_virt_wifi", "veth1_virt_wifi", "virt_wifi0", "veth0_vlan", "veth1_vlan", "vlan1", "macvlan0", "macvlan1", "ipvlan0", "ipvlan1", "veth0_macvtap", "veth1_macvtap", "macvtap0", "macsec0", "geneve0", "geneve1", "wg0", "wg1", "wg2", "wlan0", "wlan1", "dvmrp0", "dvmrp1", "pimreg", "pimreg0", "pimreg1", "pim6reg", "pim6reg0", "pim6reg1"
 
 type devname string[devnames, IFNAMSIZ]
 

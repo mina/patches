@@ -522,6 +522,7 @@ config:
  - USB4: [v5.5]
  - USB4_NET: [v5.5]
  - NETDEVSIM
+ - NET_DEVMEM
 
  - INFINIBAND
  - INFINIBAND_USER_MAD

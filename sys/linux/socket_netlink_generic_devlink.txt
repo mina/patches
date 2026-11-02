@@ -219,6 +219,8 @@ devlink_nl_rate_set_policy [
 
 resource fd_nsim_new_device[fd]
 resource fd_nsim_del_device[fd]
+resource fd_nsim_link_device[fd]
+resource fd_nsim_unlink_device[fd]
 resource fd_nsim_bool[fd]
 resource fd_nsim_qreset[fd]
 
@@ -227,6 +229,12 @@ write$nsim_new_device(fd fd_nsim_new_device, buf ptr[in, nsim_new_device], count
 
 openat$nsim_del_device(fd const[AT_FDCWD], file ptr[in, string["/sys/bus/netdevsim/del_device"]], flags const[O_WRONLY], mode const[0]) fd_nsim_del_device
 write$nsim_del_device(fd fd_nsim_del_device, buf ptr[in, nsim_del_device], count bytesize[buf])
+
+openat$nsim_link_device(fd const[AT_FDCWD], file ptr[in, string["/sys/bus/netdevsim/link_device"]], flags const[O_WRONLY], mode const[0]) fd_nsim_link_device
+write$nsim_link_device(fd fd_nsim_link_device, buf ptr[in, nsim_link_device], count bytesize[buf])
+
+openat$nsim_unlink_device(fd const[AT_FDCWD], file ptr[in, string["/sys/bus/netdevsim/unlink_device"]], flags const[O_WRONLY], mode const[0]) fd_nsim_unlink_device
+write$nsim_unlink_device(fd fd_nsim_unlink_device, buf ptr[in, nsim_unlink_device], count bytesize[buf])
 
 openat$nsim_dev_bool(fd const[AT_FDCWD], file ptr[in, nsim_dev_path[string[nsim_dev_bool_files]]], flags flags[open_flags], mode const[0]) fd_nsim_bool
 openat$nsim_port_pp_hold(fd const[AT_FDCWD], file ptr[in, nsim_port_path[string["/pp_hold"]]], flags flags[open_flags], mode const[0]) fd_nsim_bool
@@ -246,6 +254,22 @@ nsim_new_device {
 
 nsim_del_device {
 	id	proc['0', 1, int8]
+} [packed]
+
+nsim_link_device {
+	netns0	fmt[dec, fd]
+	colon0	const[':', int8]
+	ifidx0	fmt[dec, ifindex]
+	space	const[' ', int8]
+	netns1	fmt[dec, fd]
+	colon1	const[':', int8]
+	ifidx1	fmt[dec, ifindex]
+} [packed]
+
+nsim_unlink_device {
+	netns0	fmt[dec, fd]
+	colon0	const[':', int8]
+	ifidx0	fmt[dec, ifindex]
 } [packed]
 
 type nsim_dev_path[SUFFIX] {

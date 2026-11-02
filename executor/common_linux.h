@@ -1228,15 +1228,44 @@ static int runcmdline(char* cmdline)
 #define DEV_IPV6 "fe80::%02x"
 #define DEV_MAC 0x00aaaaaaaaaa
 
-static void netdevsim_add(unsigned int addr, unsigned int port_count)
+static void netdevsim_link_pair(int netns_fd, const char* dev0, const char* dev1)
+{
+	unsigned int idx0 = if_nametoindex(dev0);
+	unsigned int idx1 = if_nametoindex(dev1);
+	if (!idx0 || !idx1)
+		return;
+	write_file("/sys/bus/netdevsim/link_device", "%d:%u %d:%u", netns_fd, idx0, netns_fd, idx1);
+}
+
+static void netdevsim_add(struct nlmsg* nlmsg, int sock, unsigned int addr, unsigned int port_count)
 {
 	// These devices are sticky and are not deleted on net namespace destruction.
 	// So try to delete the previous version of the device.
 	write_file("/sys/bus/netdevsim/del_device", "%u", addr);
-	if (write_file("/sys/bus/netdevsim/new_device", "%u %u", addr, port_count)) {
+	// Create multi-queue ports (4 queues per port) so RSS, ntuple steering,
+	// threaded NAPI, and multi-queue devmem RX/TX bindings are exercised.
+	if (write_file("/sys/bus/netdevsim/new_device", "%u %u %u", addr, port_count, 4)) {
 		char buf[32];
 		snprintf(buf, sizeof(buf), "netdevsim%d", addr);
 		initialize_devlink_ports("netdevsim", buf, "netdevsim");
+
+		int netns_fd = open("/proc/self/ns/net", O_RDONLY);
+		if (netns_fd >= 0) {
+			netdevsim_link_pair(netns_fd, "netdevsim0", "netdevsim1");
+			netdevsim_link_pair(netns_fd, "netdevsim2", "netdevsim3");
+			close(netns_fd);
+		}
+
+		for (unsigned int p = 1; p < port_count; p++) {
+			char dev[32], ip[32];
+			snprintf(dev, sizeof(dev), "netdevsim%u", p);
+			snprintf(ip, sizeof(ip), DEV_IPV4, 200 + p);
+			netlink_add_addr4(nlmsg, sock, dev, ip);
+			snprintf(ip, sizeof(ip), DEV_IPV6, 200 + p);
+			netlink_add_addr6(nlmsg, sock, dev, ip);
+			uint64 macaddr = DEV_MAC + ((200ull + p) << 40);
+			netlink_device_change(nlmsg, sock, dev, true, 0, &macaddr, ETH_ALEN, NULL);
+		}
 	}
 }
 
@@ -1696,7 +1725,7 @@ static void initialize_netdevices(void)
 	netlink_add_geneve(&nlmsg, sock, "geneve0", 0, &geneve_addr4, 0);
 	netlink_add_geneve(&nlmsg, sock, "geneve1", 1, 0, &geneve_addr6);
 
-	netdevsim_add((int)procid, 4); // Number of port is in sync with value in sys/linux/socket_netlink_generic_devlink.txt
+	netdevsim_add(&nlmsg, sock, (int)procid, 4); // Number of port is in sync with value in sys/linux/socket_netlink_generic_devlink.txt
 
 	netlink_wireguard_setup();
 

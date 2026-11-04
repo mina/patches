@@ -175,7 +175,7 @@ cmake -DCMAKE_INSTALL_PREFIX:PATH=$HOME/tools/fs/usr .
 make -j
 make install
 
-# netsniff-ng
+# netsniff-ng (mausezahn / mz for forwarding & drivers/net/hw tests)
 sudo dnf install libnetfilter_conntrack.x86_64 libnetfilter_conntrack-devel.x86_64
 sudo dnf install libsodium-devel.x86_64 libsodium.x86_64
 sudo dnf install libnet libnet-devel
@@ -183,6 +183,11 @@ git clone https://github.com/netsniff-ng/netsniff-ng.git
 cd netsniff-ng
 ./configure
 make -j
+make install DESTDIR=$HOME/tools/fs PREFIX=/usr
+ln -sf mausezahn $HOME/tools/fs/usr/sbin/mz
+
+# lldpad / lldptool (for drivers/net/hw/ethtool_mm.sh)
+sudo dnf install lldpad
 
 
 # AWS iputils are buggy

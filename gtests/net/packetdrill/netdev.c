@@ -40,11 +40,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef linux
+#include <endian.h>
+#include <linux/if_packet.h>
+#endif
+
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 #include <net/if_tun.h>
 #endif /* defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) */
 
 #include "assert.h"
+#include "ethernet.h"
 #include "ip.h"
 #include "ipv6.h"
 #include "logging.h"
@@ -61,11 +67,88 @@ struct local_netdev {
 	struct netdev netdev;		/* "inherit" from netdev */
 
 	char *name;		/* malloc-ed copy of interface name (owned) */
-	int tun_fd;		/* tun for sending/receiving packets */
+	int tun_fd;		/* tun (or AF_PACKET tx) fd for injecting packets */
 	int control_fd;		/* fd for configuration of tun interface */
 	int index;		/* interface index from if_nametoindex */
+	bool is_nsim;		/* using linked netdevsim pair instead of tun */
+	struct ether_addr local_mac;
+	struct ether_addr remote_mac;
 	struct packet_socket *psock;	/* for sniffing packets (owned) */
 };
+
+#ifdef linux
+static int nsim_created_ids[2] = { -1, -1 };
+static bool nsim_atexit_registered;
+
+static int nsim_write_sysfs(const char *path, const char *val)
+{
+	ssize_t n, len = strlen(val);
+	int fd, saved_errno;
+
+	fd = open(path, O_WRONLY);
+	if (fd < 0)
+		return -errno;
+	n = write(fd, val, len);
+	saved_errno = errno;
+	close(fd);
+	return (n == len) ? 0 : -(saved_errno ? saved_errno : EIO);
+}
+
+static void cleanup_nsim_devices(void)
+{
+	char buf[32];
+	int i;
+
+	for (i = 1; i >= 0; i--) {
+		if (nsim_created_ids[i] >= 0) {
+			snprintf(buf, sizeof(buf), "%d", nsim_created_ids[i]);
+			nsim_write_sysfs("/sys/bus/netdevsim/del_device", buf);
+			nsim_created_ids[i] = -1;
+		}
+	}
+}
+
+static bool should_use_nsim(void)
+{
+	const char *env = getenv("PACKETDRILL_NSIM");
+
+	if (env)
+		return env[0] != '\0' && strcmp(env, "0") != 0;
+	return access("/sys/bus/netdevsim/new_device", W_OK) == 0;
+}
+
+static int nsim_alloc_pair(unsigned int *out_id)
+{
+	unsigned int base = 10000 + ((unsigned int)getpid() % 20000) * 2;
+	unsigned int attempt;
+
+	for (attempt = 0; attempt < 20000; attempt++) {
+		unsigned int id = 10000 + ((base - 10000 + attempt * 2) % 40000);
+		char buf0[32], buf1[32], del0[32];
+
+		snprintf(buf0, sizeof(buf0), "%u 1", id);
+		if (nsim_write_sysfs("/sys/bus/netdevsim/new_device", buf0) < 0)
+			continue;
+
+		snprintf(buf1, sizeof(buf1), "%u 1", id + 1);
+		if (nsim_write_sysfs("/sys/bus/netdevsim/new_device", buf1) < 0) {
+			snprintf(del0, sizeof(del0), "%u", id);
+			nsim_write_sysfs("/sys/bus/netdevsim/del_device", del0);
+			continue;
+		}
+
+		nsim_created_ids[0] = id;
+		nsim_created_ids[1] = id + 1;
+		if (!nsim_atexit_registered) {
+			atexit(cleanup_nsim_devices);
+			nsim_atexit_registered = true;
+		}
+		*out_id = id;
+		return 0;
+	}
+	return -ENOSPC;
+}
+#endif
 
 struct netdev_ops local_netdev_ops;
 
@@ -119,9 +202,113 @@ static void check_local_anyip(struct config *config)
 	}
 }
 
-/* Create a tun device for the lifetime of this test. */
+/* Create a tun (or linked netdevsim) device for the lifetime of this test. */
 static void create_device(struct config *config, struct local_netdev *netdev)
 {
+#ifdef linux
+	if (should_use_nsim()) {
+		struct sockaddr_ll sll = { 0 };
+		struct ifreq ifr;
+		int one = 1;
+		int peer_if;
+		char *cmd;
+
+		netdev->is_nsim = true;
+		netdev->name = strdup("tun0");
+		netdev->control_fd = wrap_socket(config->ip_version,
+						 SOCK_DGRAM);
+
+		if (if_nametoindex("tun0") == 0) {
+			unsigned int id;
+
+			if (nsim_alloc_pair(&id) < 0)
+				die("unable to allocate netdevsim pair\n");
+
+			asprintf(&cmd,
+				 "set -e; "
+				 "d0=$(ls /sys/bus/netdevsim/devices/netdevsim%u/net | head -n1); "
+				 "d1=$(ls /sys/bus/netdevsim/devices/netdevsim%u/net | head -n1); "
+				 "ip link set \"$d0\" name tun0; "
+				 "ip link set \"$d1\" name nsim1; "
+				 "exec 3</sys/class/net/tun0/ifindex; "
+				 "exec 4</sys/class/net/nsim1/ifindex; "
+				 "exec 5</proc/self/ns/net; "
+				 "read i0 <&3; read i1 <&4; "
+				 "echo \"5:$i0 5:$i1\" > /sys/bus/netdevsim/link_device; "
+				 "sysctl -qw net.ipv6.conf.tun0.accept_dad=0 "
+				 "net.ipv6.conf.nsim1.disable_ipv6=1; "
+				 "ethtool -C tun0 rx-usecs 0 2>/dev/null || true; "
+				 "ethtool -C nsim1 rx-usecs 0 2>/dev/null || true; "
+				 "tc qdisc replace dev nsim1 root pfifo 2>/dev/null || true; "
+				 "if [ -n \"$PACKETDRILL_NSIM_HDS\" ]; then "
+				 "ethtool -G tun0 tcp-data-split enabled 2>/dev/null || true; "
+				 "fi; "
+				 "ip link set nsim1 up",
+				 id, id + 1);
+		} else {
+			asprintf(&cmd,
+				 "ip addr flush dev tun0; "
+				 "ip route flush dev tun0 2>/dev/null || true; "
+				 "ip -6 route flush dev tun0 2>/dev/null || true; "
+				 "sysctl -qw net.ipv6.conf.tun0.accept_dad=0 "
+				 "net.ipv6.conf.nsim1.disable_ipv6=1; "
+				 "tc qdisc replace dev nsim1 root pfifo 2>/dev/null || true; "
+				 "ip link set nsim1 up");
+		}
+		if (system(cmd) != 0)
+			die("error setting up netdevsim: %s\n", cmd);
+		free(cmd);
+
+		netdev->index = if_nametoindex("tun0");
+		peer_if = if_nametoindex("nsim1");
+		if (!netdev->index || !peer_if)
+			die_perror("if_nametoindex tun0/nsim1");
+
+		memset(&ifr, 0, sizeof(ifr));
+		strncpy(ifr.ifr_name, "tun0", IFNAMSIZ - 1);
+		if (ioctl(netdev->control_fd, SIOCGIFHWADDR, &ifr) < 0)
+			die_perror("SIOCGIFHWADDR tun0");
+		memcpy(&netdev->local_mac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+
+		memset(&ifr, 0, sizeof(ifr));
+		strncpy(ifr.ifr_name, "nsim1", IFNAMSIZ - 1);
+		if (ioctl(netdev->control_fd, SIOCGIFHWADDR, &ifr) < 0)
+			die_perror("SIOCGIFHWADDR nsim1");
+		memcpy(&netdev->remote_mac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+
+		netdev->tun_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+		if (netdev->tun_fd < 0)
+			die_perror("socket PF_PACKET nsim1");
+		if (setsockopt(netdev->tun_fd, SOL_PACKET, PACKET_VNET_HDR,
+			       &one, sizeof(one)) < 0)
+			die_perror("setsockopt PACKET_VNET_HDR");
+		sll.sll_family = AF_PACKET;
+		sll.sll_ifindex = peer_if;
+		sll.sll_protocol = htons(ETH_P_ALL);
+		if (bind(netdev->tun_fd, (struct sockaddr *)&sll,
+			 sizeof(sll)) < 0)
+			die_perror("bind PF_PACKET nsim1");
+
+		if (config->speed != TUN_DRIVER_SPEED_CUR) {
+			asprintf(&cmd,
+				 "ethtool -s tun0 speed %u duplex full autoneg off; "
+				 "ethtool -s nsim1 speed %u duplex full autoneg off",
+				 config->speed, config->speed);
+			if (system(cmd) < 0)
+				die("Error executing %s\n", cmd);
+			free(cmd);
+		}
+		if (config->mtu != TUN_DRIVER_DEFAULT_MTU) {
+			asprintf(&cmd, "ip link set tun0 mtu %d; "
+				 "ip link set nsim1 mtu %d",
+				 config->mtu, config->mtu);
+			if (system(cmd) < 0)
+				die("Error executing %s\n", cmd);
+			free(cmd);
+		}
+		return;
+	}
+#endif
 	/* Open the tun device, which "clones" it for our purposes. */
 	int tun_fd;
 #ifdef linux
@@ -222,6 +409,8 @@ loop:
 static void set_device_offload_flags(struct local_netdev *netdev)
 {
 #ifdef linux
+	if (netdev->is_nsim)
+		return;
 	const u32 offload =
 	    TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_TSO_ECN;
 	if (ioctl(netdev->tun_fd, TUNSETOFFLOAD, offload) != 0)
@@ -287,10 +476,43 @@ static void route_traffic_to_device(struct config *config,
 #endif /* defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) */
 	int result = system(route_command);
 	if ((result == -1) || (WEXITSTATUS(result) != 0)) {
-		die("error executing route command '%s'\n",
-		    route_command);
+		if (netdev->is_nsim && !config->is_anyip) {
+			free(route_command);
+			asprintf(&route_command,
+				 "ip -%d route replace %s dev %s; "
+				 "ip -%d route replace %s dev %s via %s",
+				 (config->wire_protocol == AF_INET) ? 4 : 6,
+				 config->live_gateway_ip_string,
+				 netdev->name,
+				 (config->wire_protocol == AF_INET) ? 4 : 6,
+				 config->live_remote_prefix_string,
+				 netdev->name,
+				 config->live_gateway_ip_string);
+			result = system(route_command);
+		}
+		if ((result == -1) || (WEXITSTATUS(result) != 0))
+			die("error executing route command '%s'\n",
+			    route_command);
 	}
 	free(route_command);
+#ifdef linux
+	if (netdev->is_nsim) {
+		char mac[32];
+		const u8 *m = (const u8 *)&netdev->remote_mac;
+
+		snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+			 m[0], m[1], m[2], m[3], m[4], m[5]);
+		asprintf(&route_command,
+			 "ip -%d neigh replace %s lladdr %s dev %s nud permanent; "
+			 "ip -%d neigh replace %s lladdr %s dev %s nud permanent",
+			 (config->wire_protocol == AF_INET) ? 4 : 6,
+			 config->live_gateway_ip_string, mac, netdev->name,
+			 (config->wire_protocol == AF_INET) ? 4 : 6,
+			 config->live_remote_ip_string, mac, netdev->name);
+		system(route_command);
+		free(route_command);
+	}
+#endif
 }
 
 struct netdev *local_netdev_new(struct config *config)
@@ -365,18 +587,41 @@ static void linux_tun_write(struct local_netdev *netdev,
 			    struct packet *packet)
 {
 	struct virtio_net_hdr gso = { 0 };
-	struct iovec vector[2] = {
-		{ &gso, sizeof(gso) },
-		{ packet_start(packet), packet->ip_bytes }
-	};
+	struct ether_header ether;
 
 	if (packet->tcp && packet->mss) {
 		if (packet->ipv4)
 			gso.gso_type = VIRTIO_NET_HDR_GSO_TCPV4;
 		else
 			gso.gso_type = VIRTIO_NET_HDR_GSO_TCPV6;
-		gso.gso_size = packet->mss;
+		gso.gso_size = htole16(packet->mss);
 	}
+	if (netdev->is_nsim) {
+		int af = packet_address_family(packet);
+		size_t total_len = sizeof(ether) + packet->ip_bytes;
+		size_t hdr_len = total_len < 3760 ? total_len : 3760;
+		struct iovec vec[3] = {
+			{ &gso, sizeof(gso) },
+			{ &ether, sizeof(ether) },
+			{ packet_start(packet), packet->ip_bytes }
+		};
+
+		/* Match tun_alloc_skb() linear headroom (3776 - 16 = 3760) so
+		 * skb->truesize matches tun across nonlinear GSO/OOO tests.
+		 */
+		gso.hdr_len = htole16(hdr_len);
+		ether_copy(ether.ether_dhost, &netdev->local_mac);
+		ether_copy(ether.ether_shost, &netdev->remote_mac);
+		ether.ether_type = htons(ether_type_for_family(af));
+		if (writev(netdev->tun_fd, vec, ARRAY_SIZE(vec)) < 0)
+			die_perror("Linux nsim writev()");
+		return;
+	}
+
+	struct iovec vector[2] = {
+		{ &gso, sizeof(gso) },
+		{ packet_start(packet), packet->ip_bytes }
+	};
 	if (writev(netdev->tun_fd, vector, ARRAY_SIZE(vector)) < 0)
 		die_perror("Linux tun write()");
 }
@@ -448,12 +693,15 @@ static int local_netdev_receive(struct netdev *a_netdev, s32 timeout_secs,
 
 	DEBUGP("local_netdev_receive\n");
 
-	status = netdev_receive_loop(netdev->psock, PACKET_LAYER_3_IP,
+	status = netdev_receive_loop(netdev->psock,
+				     netdev->is_nsim ? PACKET_LAYER_2_ETHERNET :
+						       PACKET_LAYER_3_IP,
 				     DIRECTION_OUTBOUND, timeout_secs, packet,
 				     &num_packets, error);
 	if (status == STATUS_TIMEOUT)
 		return STATUS_TIMEOUT;
-	local_netdev_read_queue(netdev, num_packets);
+	if (!netdev->is_nsim)
+		local_netdev_read_queue(netdev, num_packets);
 	return status;
 }
 

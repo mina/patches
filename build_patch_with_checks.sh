@@ -95,7 +95,9 @@ run_targeted_build() {
     if [ "$disable_rust" = "1" ]; then
       ./scripts/config --file "$output_dir/.config" -d rust
     fi
-    make CC="$cc" $extra_make_args O="$output_dir" -j "$ncpu" olddefconfig modules_prepare >/dev/null
+    make CC="$cc" $extra_make_args O="$output_dir" -j "$ncpu" olddefconfig modules_prepare </dev/null >/dev/null
+  else
+    make CC="$cc" $extra_make_args O="$output_dir" olddefconfig </dev/null >/dev/null
   fi
 
   git checkout -q "${HEAD}~"
@@ -109,7 +111,7 @@ run_targeted_build() {
   local before_rc=0
   if [ -n "$targets_before" ]; then
     clean_targets "$output_dir" $targets_before
-    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_before 2> >(tee "$tmpfile_o" >&2) >/dev/null || before_rc=1
+    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_before </dev/null 2> >(tee "$tmpfile_o" >&2) >/dev/null || before_rc=1
   fi
   clean_up_output "$tmpfile_o"
   local incumbent
@@ -119,7 +121,7 @@ run_targeted_build() {
   local build_rc=0
   if [ -n "$targets_after" ]; then
     clean_targets "$output_dir" $targets_after
-    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_after 2> >(tee "$tmpfile_n" >&2) >/dev/null || build_rc=1
+    make CC="$cc" $extra_make_args O="$output_dir" -Oline -j "$ncpu" $targets_after </dev/null 2> >(tee "$tmpfile_n" >&2) >/dev/null || build_rc=1
   fi
   clean_up_output "$tmpfile_n"
   local current

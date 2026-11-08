@@ -121,6 +121,8 @@ function create() {
 
 	if [[ -n "$SEND_TO" ]]; then
 		to="$SEND_TO"
+	elif [[ "$tree" == "net" || "$tree" == "net-next" ]]; then
+		to="netdev@vger.kernel.org"
 	else
 		to=$(for pf in "${patch_files[@]}"; do
 			./scripts/get_maintainer.pl \
@@ -131,6 +133,12 @@ function create() {
 
 	if [[ -n "${SEND_CC+x}" ]]; then
 		cc="$SEND_CC"
+	elif [[ "$tree" == "net" || "$tree" == "net-next" ]]; then
+		cc=$(for pf in "${patch_files[@]}"; do
+			./scripts/get_maintainer.pl \
+				--git-min-percent 25 --norolestats --nomoderated \
+				"$pf" &
+		done | awk -v to="$to" '$0 != to && !seen[$0]++' | paste -sd ',' - | sed 's/,/, /g')
 	else
 		cc=$(for pf in "${patch_files[@]}"; do
 			./scripts/get_maintainer.pl \

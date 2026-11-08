@@ -1,0 +1,4 @@
+{
+  "run": ["pp_bench.sh"],
+  "pull-requests": true
+}
